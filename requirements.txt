@@ -1,0 +1,7 @@
+pandas
+numpy
+matplotlib
+python-binance
+scikit-learn
+ta
+flask
