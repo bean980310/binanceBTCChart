@@ -6,87 +6,9 @@
         <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     </head>
     <body>
-        <div id="chart" style="width: 100%; height: 600px;"></div>
-        <script>
-            // 백엔드에서 데이터 가져오기
-            fetch('/data')
-                .then(response => response.json())
-                .then(data => {
-                    // 데이터 처리 및 차트 렌더링
-                    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                        width: 800,
-                        height: 600,
-                    });
-
-                    const candlestickSeries = chart.addCandlestickSeries();
-
-                    // 시간과 가격 데이터를 lightweight-charts 형식에 맞게 변환
-                    const chartData = data.map(item => ({
-                        time: new Date(item['Open Time']).getTime() / 1000,
-                        open: item['Open'],
-                        high: item['High'],
-                        low: item['Low'],
-                        close: item['Close'],
-                    }));
-
-                    candlestickSeries.setData(chartData);
-
-                    // 기술 지표 추가 (예: EMA, RSI 등)
-                    // 필요한 경우 추가적인 시리즈를 생성하고 데이터를 설정하세요.
-
-                    // 예: EMA 라인 추가
-                    const emaLineSeries = chart.addLineSeries({
-                        color: 'blue',
-                        lineWidth: 2,
-                    });
-
-                    const emaData = data.map(item => ({
-                        time: new Date(item['Open Time']).getTime() / 1000,
-                        value: item['EMA9'], // EMA9 열 사용
-                    })).filter(item => item.value !== null); // 결측치 제거
-
-                    emaLineSeries.setData(emaData);
-
-                    // 추가적인 지표도 동일한 방식으로 추가 가능합니다.
-
-                    const emaLineSeries60 = chart.addLineSeries({
-                        color: 'blue',
-                        lineWidth: 2,
-                    });
-
-                    const emaData60 = data.map(item => ({
-                        time: new Date(item['Open Time']).getTime() / 1000,
-                        value: item['EMA9'], // EMA9 열 사용
-                    })).filter(item => item.value !== null); // 결측치 제거
-
-                    emaLineSeries60.setData(emaData60);
-
-                    function updateData() {
-                        fetch('/data')
-                            .then(response => response.json())
-                            .then(newData => {
-                                // 새로운 데이터로 시리즈 업데이트
-                                const updatedChartData = newData.map(item => ({
-                                    time: new Date(item['Open Time']).getTime() / 1000,
-                                    open: item['Open'],
-                                    high: item['High'],
-                                    low: item['Low'],
-                                    close: item['Close'],
-                                }));
-                                candlestickSeries.setData(updatedChartData);
-
-                                // 지표도 동일하게 업데이트
-                                const updatedEmaData = data.map(item => ({
-                                    time: new Date(item['Open Time']).getTime() / 1000,
-                                    value: item['EMA9'], // EMA9 열 사용
-                                })).filter(item => item.value !== null); // 결측치 제거
-                                emaLineSeries.setData(updatedEmaData)
-                            });
-                        }
-
-                    // 1분마다 데이터 업데이트
-                    setInterval(updateData, 1);
-                });
-        </script>
+        <div id="price-chart" style="width: 100%; height: 600px;"></div>
+        <div id="volume-chart" style="width: 100%; height: 150px;"></div>
+        <div id="rsi-chart" style="width: 100%; height: 150px;"></div>
+        <script src="{{ url_for('static', filename='chart.js') }}"></script>
     </body>
 </html>
