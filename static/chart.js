@@ -59,6 +59,25 @@ fetch('/data')
         },
     });
 
+    // MACD 차트 생성
+    const macdChart = LightweightCharts.createChart(document.getElementById('macd-chart'), {
+        width: 800,
+        height: 150,
+        layout: {
+            backgroundColor: '#ffffff',
+            textColor: '#000',
+        },
+        rightPriceScale: {
+            scaleMargins: {
+                top: 0.2,
+                bottom: 0.2,
+            },
+        },
+        timeScale: {
+            borderColor: '#D1D4DC',
+        },
+    });
+
 
     const candlestickSeries = priceChart.addCandlestickSeries();
 
@@ -144,10 +163,76 @@ fetch('/data')
     const rsiData = data.map(item => ({
         time: new Date(item['Open Time']).getTime() / 1000,
         value: item['RSI'],
-    })).filter(item => item.value !== null && !isNaN(item.value));
-    
+    })).filter(item => item.value !== null);
 
     rsiSeries.setData(rsiData);
+
+    // RSI 이동평균선(SMA) 시리즈 추가
+    const rsiSmaSeries = rsiChart.addLineSeries({
+        color: 'orange',
+        lineWidth: 1,
+    });
+
+    // RSI 이동평균선 데이터 설정
+    const rsiSmaData = data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item['RSI_SMA'],
+    })).filter(item => item.value !== null);
+
+    rsiSmaSeries.setData(rsiSmaData);
+
+    const macdLineSeries = macdChart.addLineSeries({
+        color: 'blue',
+        lineWidth: 1,
+    });
+
+    const macdLineData=data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item['MACD'],
+    })).filter(item => item.value !== null);
+
+    macdLineSeries.setData(macdLineData)
+
+    const macdSignalSeries = macdChart.addLineSeries({
+        color: 'red',
+        lineWidth: 1,
+    });
+
+    const macdSignalData=data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item['MACD_Signal'],
+    })).filter(item => item.value !== null);
+    
+    macdSignalSeries.setData(macdSignalData)
+
+    const macdHistSeries = macdChart.addHistogramSeries({
+        priceFormat: {
+            type: 'price',
+            precision: 5,
+            minMove: 0.00001,
+        },
+        priceScaleId: '',
+        scaleMargins: {
+            top: 0.2,
+            bottom: 0,
+        },
+    });
+
+    const macdHistData = data.map(item => {
+        const time = new Date(item['Open Time']).getTime() / 1000;
+        const value = item['MACD_Hist'];
+    
+        let color = value >= 0 ? '#26a69a' : '#ef5350';
+    
+        return {
+            time: time,
+            value: value,
+            color: color,
+        };
+    }).filter(item => item.value !== null);
+    
+
+    macdHistSeries.setData(macdHistData)
 
     function updateData() {
         fetch('/data')
@@ -196,9 +281,47 @@ fetch('/data')
                 const updatedRsiData = data.map(item => ({
                     time: new Date(item['Open Time']).getTime() / 1000,
                     value: item['RSI'],
-                })).filter(item => item.value !== null && !isNaN(item.value));
+                })).filter(item => item.value !== null);
 
                 rsiSeries.setData(updatedRsiData);
+
+                // RSI 이동평균선 데이터 설정
+                const updatedRsiSmaData = data.map(item => ({
+                    time: new Date(item['Open Time']).getTime() / 1000,
+                    value: item['RSI_SMA'],
+                })).filter(item => item.value !== null && !isNaN(item.value));
+
+                rsiSmaSeries.setData(updatedRsiSmaData);
+
+                const updatedMacdLineData=data.map(item => ({
+                    time: new Date(item['Open Time']).getTime() / 1000,
+                    value: item['MACD'],
+                })).filter(item => item.value !== null);
+            
+                macdLineSeries.setData(updatedMacdLineData)
+
+                const updatedMacdSignalData=data.map(item => ({
+                    time: new Date(item['Open Time']).getTime() / 1000,
+                    value: item['MACD_Signal'],
+                })).filter(item => item.value !== null);
+                
+                macdSignalSeries.setData(updatedMacdSignalData)
+
+                const updatedMacdHistData=data.map(item => {
+                    const time = new Date(item['Open Time']).getTime() / 1000;
+                    const value = item['MACD_Hist'];
+                
+                    let color = value >= 0 ? '#26a69a' : '#ef5350';
+                
+                    return {
+                        time: time,
+                        value: value,
+                        color: color,
+                    };
+                }).filter(item => item.value !== null);
+            
+                macdHistSeries.setData(updatedMacdHistData)
+            
             });
         }
 

@@ -70,6 +70,7 @@ def get_data_and_indicators():
 
     # RSI 계산
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
+    data['RSI_SMA'] = data['RSI'].rolling(window=9).mean()
 
     # 스토캐스틱 RSI 계산
     stoch_rsi = ta.momentum.StochRSIIndicator(data['Close'], window=14, smooth1=3, smooth2=3)
