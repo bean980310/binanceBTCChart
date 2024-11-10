@@ -2,48 +2,8 @@
 fetch('/data')
 .then(response => response.json())
 .then(data => {
-    // 데이터 처리 및 차트 렌더링
-    const priceChart = LightweightCharts.createChart(document.getElementById('price-chart'), {
+    const chartOptions = {
         width: 800,
-        height: 600,
-        layout: {
-        backgroundColor: '#ffffff',
-        textColor: '#000',
-        },
-        rightPriceScale: {
-            scaleMargins: {
-                top: 0.2,
-                bottom: 0.2,
-            },
-        },
-        timeScale: {
-            borderColor: '#D1D4DC',
-        },
-    });
-
-    // 볼륨 차트 생성
-    const volumeChart = LightweightCharts.createChart(document.getElementById('volume-chart'), {
-        width: 800,
-        height: 150,
-        layout: {
-            backgroundColor: '#ffffff',
-            textColor: '#000',
-        },
-        rightPriceScale: {
-            scaleMargins: {
-                top: 0.05,
-                bottom: 0.05,
-            },
-        },
-        timeScale: {
-            visible: false, // 볼륨 차트의 시간축을 숨김
-        },
-    });
-
-    // RSI 차트 생성
-    const rsiChart = LightweightCharts.createChart(document.getElementById('rsi-chart'), {
-        width: 800,
-        height: 150,
         layout: {
             backgroundColor: '#ffffff',
             textColor: '#000',
@@ -57,27 +17,16 @@ fetch('/data')
         timeScale: {
             borderColor: '#D1D4DC',
         },
-    });
+    };
+    const priceChart = LightweightCharts.createChart(document.getElementById('price-chart'), { ...chartOptions, height: 600 });
+    const volumeChart = LightweightCharts.createChart(document.getElementById('volume-chart'), { ...chartOptions, height: 150 });
+    const rsiChart = LightweightCharts.createChart(document.getElementById('rsi-chart'), { ...chartOptions, height: 150 });
+    const macdChart = LightweightCharts.createChart(document.getElementById('macd-chart'), { ...chartOptions, height: 150 });
 
-    // MACD 차트 생성
-    const macdChart = LightweightCharts.createChart(document.getElementById('macd-chart'), {
-        width: 800,
-        height: 150,
-        layout: {
-            backgroundColor: '#ffffff',
-            textColor: '#000',
-        },
-        rightPriceScale: {
-            scaleMargins: {
-                top: 0.2,
-                bottom: 0.2,
-            },
-        },
-        timeScale: {
-            borderColor: '#D1D4DC',
-        },
-    });
-
+    // 시간축 숨김 설정
+    volumeChart.timeScale().options().visible = false;
+    rsiChart.timeScale().options().visible = false;
+    macdChart.timeScale().options().visible = false;
 
     const candlestickSeries = priceChart.addCandlestickSeries();
 
@@ -231,8 +180,72 @@ fetch('/data')
         };
     }).filter(item => item.value !== null);
     
-
     macdHistSeries.setData(macdHistData)
+
+     // OHLC 정보를 priceLine으로 추가하는 함수
+     function updateOhlcInfo(param) {
+        if (param && param.seriesData) {
+            const price = param.seriesData.get(candlestickSeries);
+            if (price) {
+                priceChart.removePriceLine(priceLineOpen);
+                priceChart.removePriceLine(priceLineHigh);
+                priceChart.removePriceLine(priceLineLow);
+                priceChart.removePriceLine(priceLineClose);
+
+                // 시가, 고가, 저가, 종가 표시를 위한 priceLine 설정
+                priceLineOpen = priceChart.createPriceLine({
+                    price: price.open,
+                    color: 'blue',
+                    lineWidth: 1,
+                    title: `O: ${price.open.toFixed(2)}`,
+                });
+                priceLineHigh = priceChart.createPriceLine({
+                    price: price.high,
+                    color: 'green',
+                    lineWidth: 1,
+                    title: `H: ${price.high.toFixed(2)}`,
+                });
+                priceLineLow = priceChart.createPriceLine({
+                    price: price.low,
+                    color: 'red',
+                    lineWidth: 1,
+                    title: `L: ${price.low.toFixed(2)}`,
+                });
+                priceLineClose = priceChart.createPriceLine({
+                    price: price.close,
+                    color: 'purple',
+                    lineWidth: 1,
+                    title: `C: ${price.close.toFixed(2)}`,
+                });
+
+                candlestickSeries.applyOptions({
+                    priceLineVisible: true,
+                });
+            }
+        }
+    }
+
+    // 초기 priceLine 변수 정의
+    let priceLineOpen, priceLineHigh, priceLineLow, priceLineClose;
+
+    // 차트에서 마우스 이동 시 OHLC 정보를 업데이트
+    priceChart.subscribeCrosshairMove(updateOhlcInfo);
+
+    // 시간축 동기화
+    const synchronizeCharts = (mainChart, linkedCharts) => {
+        mainChart.timeScale().subscribeVisibleTimeRangeChange((newVisibleTimeRange) => {
+            linkedCharts.forEach(linkedChart => {
+                linkedChart.timeScale().setVisibleRange(newVisibleTimeRange);
+            });
+        });
+        // mainChart.priceScale().subscribeVisiblePriceRangeChange((newVisiblePriceRange) => {
+        //     linkedCharts.forEach(linkedChart => {
+        //         linkedChart.priceScale().setVisiblePriceRange(newVisiblePriceRange);
+        //     });
+        // });
+    };
+
+    synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart]);
 
     function updateData() {
         fetch('/data')
@@ -324,29 +337,6 @@ fetch('/data')
             
             });
         }
-
     // 1분마다 데이터 업데이트
     setInterval(updateData, 100);
-
-    // 시간축 동기화
-    const bindScroll = function (chart) {
-        return function (e) {
-            if (preventScrollEvent) {
-                preventScrollEvent = false;
-                return;
-            }
-            preventScrollEvent = true;
-            otherChart.timeScale().scrollToPosition(chart.timeScale().scrollPosition(), false);
-        };
-    };
-
-    const bindVisibleLogicalRangeChange = function (chart) {
-        return function (e) {
-            otherChart.timeScale().setVisibleLogicalRange(chart.timeScale().getVisibleLogicalRange());
-        };
-    };
-
-    priceChart.timeScale().subscribeVisibleTimeRangeChange((newVisibleTimeRange) => {
-        volumeChart.timeScale().setVisibleRange(newVisibleTimeRange);
-    });
 });
