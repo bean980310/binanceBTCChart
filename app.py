@@ -59,7 +59,7 @@ client = Client(api_key, api_secret)
 def get_data_and_indicators():
     # 데이터 가져오기
     symbol = 'BTCUSDT'
-    interval = Client.KLINE_INTERVAL_1HOUR  # 1시간 봉
+    interval = Client.KLINE_INTERVAL_4HOUR  # 1시간 봉
     lookback = '60 days ago UTC'  # 최근 60일 데이터
     data = get_historical_klines(symbol, interval, lookback)
 
@@ -151,7 +151,7 @@ def data():
     return data_json
 
 if __name__=='__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5001)
 
 # while True:
 #     # 데이터 갱신

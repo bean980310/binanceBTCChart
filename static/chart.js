@@ -326,7 +326,7 @@ fetch('/data')
         }
 
     // 1분마다 데이터 업데이트
-    setInterval(updateData, 1);
+    setInterval(updateData, 100);
 
     // 시간축 동기화
     const bindScroll = function (chart) {
