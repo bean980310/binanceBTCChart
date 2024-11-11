@@ -94,7 +94,7 @@ def calculate_support_resistance_levels(data):
 #     redis_client.set("market_data", data.to_json(orient='records', date_format='iso'))
 #     print("Data cache updated.")
 
-def fetch_historical_data(symbol='BTCUSDT', interval=Client.KLINE_INTERVAL_4HOUR, lookback='60 days ago UTC'):
+def fetch_historical_data(symbol='BTCUSDT', interval=Client.KLINE_INTERVAL_4HOUR, lookback='128 days ago UTC+9:00'):
     klines = client.get_historical_klines(symbol, interval, lookback)
     data = pd.DataFrame(klines, columns=[
         'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
