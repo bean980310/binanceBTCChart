@@ -20,7 +20,7 @@ cache.init_app(app)
 
 api_key_file=Path.home()/'.binance'/'api_key.txt'
 api_secret_file=Path.home()/'.binance'/'api_secret.txt'
-predictions_file = Path(__path__).parent / 'data' / 'predictions.csv'
+predictions_file = Path().parent / 'data' / 'predictions.csv'
 
 def get_api(file_path, prompt_func):
     try:
