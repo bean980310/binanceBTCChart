@@ -1,79 +1,175 @@
-// 백엔드에서 데이터 가져오기
-fetch('/data')
-.then(response => response.json())
-.then(data => {
+// 메인 함수를 async로 변환
+async function initializeChartSystem() {
+    try {
+        const response = await fetch('/data');
+        const data = await response.json();
 
-    const symbol = "BTCUSDT.P";
-    const infoBox = initializeInfoBox(symbol, data);
+        const symbol = "BTCUSDT.P";
+        const infoBox = initializeInfoBox(symbol, data);
 
-    const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
+        const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
 
-    const candlestickSeries = createCandlestickSeries(priceChart);
-    const volumeSeries = createVolumeSeries(volumeChart);
+        const series = initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stochRsiChart);
+        
+        const chartData = await transformAllData(data);
+        
+        await updateAllSeriesData(series, chartData);
 
-    const ema9Series = createLineSeries(priceChart, 'blue', 2);
-    const ema60Series = createLineSeries(priceChart, 'red', 2);
-    const ema200Series = createLineSeries(priceChart, 'green', 2);
+        let supportSeriesList = [];
+        let resistanceSeriesList = [];
 
-    const rsiSeries = createLineSeries(rsiChart, 'purple', 1);
-    const rsiSmaSeries = createLineSeries(rsiChart, 'orange', 1);
+        priceChart.subscribeCrosshairMove(param => 
+            updateOhlcInfo(param, infoBox, series.candlestickSeries, chartData.ohlcData, symbol)
+        );
 
-    const macdLineSeries = createLineSeries(macdChart, 'blue', 1)
-    const macdSignalSeries = createLineSeries(macdChart, 'orange', 1);
-    const macdHistSeries = createHistogramSeries(macdChart);
+        synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart, stochRsiChart]);
 
-    const stochRsiKSeries = createLineSeries(stochRsiChart, 'blue', 1)
-    const stochRsiDSeries = createLineSeries(stochRsiChart, 'orange', 1);
+        // 주기적 업데이트를 async 함수로 변환
+        setInterval(async () => {
+            await updateAllData(series, infoBox, symbol);
+        }, 100);
 
-    const chartData = transformChartData(data);
-    const volumeData = transformVolumeData(data);
+        setInterval(async () => {
+            await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+        }, 60000);
 
-    const ema9Data = transformIndicatorData(data, 'EMA9');
-    const ema60Data = transformIndicatorData(data, 'EMA60');
-    const ema200Data = transformIndicatorData(data, 'EMA200');
+    } catch (error) {
+        console.error('Initialization error:', error);
+    }
+}
 
-    const rsiData = transformIndicatorData(data, 'RSI');
-    const rsiSmaData = transformIndicatorData(data, 'RSI_SMA');
+// 모든 시리즈 초기화를 하나의 함수로 통합
+function initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stochRsiChart) {
+    return {
+        candlestickSeries: createCandlestickSeries(priceChart),
+        volumeSeries: createVolumeSeries(volumeChart),
+        ema9Series: createLineSeries(priceChart, 'blue', 2),
+        ema60Series: createLineSeries(priceChart, 'red', 2),
+        ema200Series: createLineSeries(priceChart, 'green', 2),
+        rsiSeries: createLineSeries(rsiChart, 'purple', 1),
+        rsiSmaSeries: createLineSeries(rsiChart, 'orange', 1),
+        macdLineSeries: createLineSeries(macdChart, 'blue', 1),
+        macdSignalSeries: createLineSeries(macdChart, 'orange', 1),
+        macdHistSeries: createHistogramSeries(macdChart),
+        stochRsiKSeries: createLineSeries(stochRsiChart, 'blue', 1),
+        stochRsiDSeries: createLineSeries(stochRsiChart, 'orange', 1)
+    };
+}
 
-    const macdLineData = transformIndicatorData(data, 'MACD');
-    const macdSignalData = transformIndicatorData(data, 'MACD_Signal');
-    const macdHistData = transformMacdHistData(data);
+// 모든 데이터 변환을 하나의 함수로 통합
+async function transformAllData(data) {
+    return {
+        ohlcData: transformChartData(data),
+        volumeData: transformVolumeData(data),
+        ema9Data: transformIndicatorData(data, 'EMA9'),
+        ema60Data: transformIndicatorData(data, 'EMA60'),
+        ema200Data: transformIndicatorData(data, 'EMA200'),
+        rsiData: transformIndicatorData(data, 'RSI'),
+        rsiSmaData: transformIndicatorData(data, 'RSI_SMA'),
+        macdLineData: transformIndicatorData(data, 'MACD'),
+        macdSignalData: transformIndicatorData(data, 'MACD_Signal'),
+        macdHistData: transformMacdHistData(data),
+        stochRsiKData: transformIndicatorData(data, 'StochRSI_%K'),
+        stochRsiDData: transformIndicatorData(data, 'StochRSI_%D')
+    };
+}
 
-    const stochRsiKData = transformIndicatorData(data, 'StochRSI_%K');
-    const stochRsiDData = transformIndicatorData(data, 'StochRSI_%D');
+// 모든 시리즈 데이터 업데이트를 하나의 함수로 통합
+async function updateAllSeriesData(series, chartData) {
+    setSeriesData(series.candlestickSeries, chartData.ohlcData);
+    setSeriesData(series.volumeSeries, chartData.volumeData);
+    setSeriesData(series.ema9Series, chartData.ema9Data);
+    setSeriesData(series.ema60Series, chartData.ema60Data);
+    setSeriesData(series.ema200Series, chartData.ema200Data);
+    setSeriesData(series.rsiSeries, chartData.rsiData);
+    setSeriesData(series.rsiSmaSeries, chartData.rsiSmaData);
+    setSeriesData(series.macdLineSeries, chartData.macdLineData);
+    setSeriesData(series.macdSignalSeries, chartData.macdSignalData);
+    setSeriesData(series.macdHistSeries, chartData.macdHistData);
+    setSeriesData(series.stochRsiKSeries, chartData.stochRsiKData);
+    setSeriesData(series.stochRsiDSeries, chartData.stochRsiDData);
+}
 
-    setSeriesData(candlestickSeries, chartData);
-    setSeriesData(volumeSeries, volumeData);
+// 데이터 업데이트 함수를 async로 변환
+async function updateAllData(series, infoBox, symbol) {
+    try {
+        const response = await fetch('/data');
+        const newData = await response.json();
+        
+        const chartData = await transformAllData(newData);
+        await updateAllSeriesData(series, chartData);
+        
+        const latestData = chartData.ohlcData[chartData.ohlcData.length - 1];
+        updateInfoBox(infoBox, symbol, latestData);
+    } catch (error) {
+        console.error('Update error:', error);
+    }
+}
 
-    setSeriesData(ema9Series, ema9Data);
-    setSeriesData(ema60Series, ema60Data);
-    setSeriesData(ema200Series, ema200Data);
+// 지지/저항선 업데이트 함수를 async로 변환
+async function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
+    try {
+        // 기존 라인 제거
+        supportSeriesList.forEach(series => priceChart.removeSeries(series));
+        resistanceSeriesList.forEach(series => priceChart.removeSeries(series));
+        
+        supportSeriesList = [];
+        resistanceSeriesList = [];
 
-    setSeriesData(rsiSeries, rsiData);
-    setSeriesData(rsiSmaSeries, rsiSmaData);
+        const levels = ["Level1", "Level2", "Level3"];
+        const supportColors = ['green', 'lightgreen'];
+        const resistanceColors = ['red', 'pink'];
 
-    setSeriesData(macdLineSeries, macdLineData);
-    setSeriesData(macdSignalSeries, macdSignalData);
-    setSeriesData(macdHistSeries, macdHistData);
+        levels.forEach(level => {
+            addSupportResistanceLevel(
+                data, level, priceChart, 
+                supportSeriesList, resistanceSeriesList,
+                supportColors, resistanceColors
+            );
+        });
+    } catch (error) {
+        console.error('Support/Resistance update error:', error);
+    }
+}
 
-    setSeriesData(stochRsiKSeries, stochRsiKData);
-    setSeriesData(stochRsiDSeries, stochRsiDData);
+// 지지/저항 레벨 추가 헬퍼 함수
+function addSupportResistanceLevel(data, level, priceChart, supportSeriesList, resistanceSeriesList, supportColors, resistanceColors) {
+    const timeData = data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000
+    }));
 
-    let supportSeriesList = [];
-    let resistanceSeriesList = [];
+    const support1st = data[0][`Support_1st_${level}`];
+    const support2nd = data[0][`Support_2nd_${level}`];
+    const resistance1st = data[0][`Resistance_1st_${level}`];
+    const resistance2nd = data[0][`Resistance_2nd_${level}`];
 
-    priceChart.subscribeCrosshairMove(param => updateOhlcInfo(param, infoBox, candlestickSeries, chartData, symbol));
+    addLevelLine(support1st, `Support 1차 ${level}`, supportColors[0], timeData, priceChart, supportSeriesList);
+    addLevelLine(support2nd, `Support 2차 ${level}`, supportColors[1], timeData, priceChart, supportSeriesList);
+    addLevelLine(resistance1st, `Resistance 1차 ${level}`, resistanceColors[0], timeData, priceChart, resistanceSeriesList);
+    addLevelLine(resistance2nd, `Resistance 2차 ${level}`, resistanceColors[1], timeData, priceChart, resistanceSeriesList);
+}
 
-    synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart, stochRsiChart]);
+// 레벨 라인 추가 헬퍼 함수
+function addLevelLine(level, title, color, timeData, priceChart, seriesList) {
+    if (level !== undefined) {
+        const series = priceChart.addLineSeries({
+            color: color,
+            lineWidth: 1,
+            title: title,
+        });
+        series.setData(timeData.map(time => ({ ...time, value: level })));
+        seriesList.push(series);
+    }
+}
 
-    // 1분마다 데이터 업데이트
-    setInterval(() => updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol), 100);
-
-    setInterval(updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart), 60000);
-})
-.catch(error => {
-    console.error('Fetch error:', error);
-});
+// InfoBox 업데이트 헬퍼 함수
+function updateInfoBox(infoBox, symbol, latestData) {
+    if (latestData) {
+        infoBox.innerHTML = `${symbol} - O: ${latestData.open.toFixed(2)} H: ${latestData.high.toFixed(2)} L: ${latestData.low.toFixed(2)} C: ${latestData.close.toFixed(2)}`;
+    } else {
+        infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
+    }
+}
 
 function initializeInfoBox(symbol, data){
     const infoBox = document.createElement('div');
@@ -224,121 +320,7 @@ function synchronizeCharts(mainChart, linkedCharts) {
     });
 }
 
-function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
-    supportSeriesList.forEach(series => priceChart.removeSeries(series));
-    resistanceSeriesList.forEach(series => priceChart.removeSeries(series));
-    supportSeriesList = [];
-    resistanceSeriesList = [];
 
-    // 1차 및 2차 지지선과 저항선 레벨 가져오기
-    const levels = ["Level1", "Level2", "Level3"];
-    const supportColors = ['green', 'lightgreen'];
-    const resistanceColors = ['red', 'pink'];
-
-    levels.forEach((level, levelIndex) => {
-        const support1st = data[0][`Support_1st_${level}`];
-        const support2nd = data[0][`Support_2nd_${level}`];
-        const resistance1st = data[0][`Resistance_1st_${level}`];
-        const resistance2nd = data[0][`Resistance_2nd_${level}`];
-
-        if (support1st !== undefined) {
-            const support1stSeries = priceChart.addLineSeries({
-                color: supportColors[0],
-                lineWidth: 1,
-                title: `Support 1차 ${level}`,
-            });
-            support1stSeries.setData(data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: support1st,
-            })));
-            supportSeriesList.push(support1stSeries);
-        }
-
-        if (support2nd !== undefined) {
-            const support2ndSeries = priceChart.addLineSeries({
-                color: supportColors[1],
-                lineWidth: 1,
-                title: `Support 2차 ${level}`,
-            });
-            support2ndSeries.setData(data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: support2nd,
-            })));
-            supportSeriesList.push(support2ndSeries);
-        }
-
-        if (resistance1st !== undefined) {
-            const resistance1stSeries = priceChart.addLineSeries({
-                color: resistanceColors[0],
-                lineWidth: 1,
-                title: `Resistance 1차 ${level}`,
-            });
-            resistance1stSeries.setData(data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: resistance1st,
-            })));
-            resistanceSeriesList.push(resistance1stSeries);
-        }
-
-        if (resistance2nd !== undefined) {
-            const resistance2ndSeries = priceChart.addLineSeries({
-                color: resistanceColors[1],
-                lineWidth: 1,
-                title: `Resistance 2차 ${level}`,
-            });
-            resistance2ndSeries.setData(data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: resistance2nd,
-            })));
-            resistanceSeriesList.push(resistance2ndSeries);
-        }
-    });
-}
-
-
-function updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol) {
-    fetch('/data')
-    .then(response => response.json())
-    .then(newData => {
-        const updatedChartData = transformChartData(newData);
-        const updatedVolumeData = transformVolumeData(newData);
-
-        const updatedEma9Data = transformIndicatorData(newData, 'EMA9');
-        const updatedeEma60Data = transformIndicatorData(newData, 'EMA60');
-        const updatedeEma200Data = transformIndicatorData(newData, 'EMA200');
-
-        const updatedRsiData = transformIndicatorData(newData, 'RSI');
-        const updatedRsiSmaData = transformIndicatorData(newData, 'RSI_SMA');
-
-        const updatedMacdLineData = transformIndicatorData(newData, 'MACD');
-        const updatedMacdSignalData = transformIndicatorData(newData, 'MACD_Signal');
-        const updatedMacdHistData = transformMacdHistData(newData)
-
-        const updatedStochRsiKData = transformIndicatorData(newData, 'StochRSI_%K');
-        const updatedStochRsiDData = transformIndicatorData(newData, 'StochRSI_%D');
-
-        setSeriesData(candlestickSeries, updatedChartData);
-        setSeriesData(volumeSeries, updatedVolumeData);
-
-        setSeriesData(ema9Series, updatedEma9Data);
-        setSeriesData(ema60Series, updatedeEma60Data);
-        setSeriesData(ema200Series, updatedeEma200Data);
-
-        setSeriesData(rsiSeries, updatedRsiData);
-        setSeriesData(rsiSmaSeries, updatedRsiSmaData);
-
-        setSeriesData(macdLineSeries, updatedMacdLineData);
-        setSeriesData(macdSignalSeries, updatedMacdSignalData);
-        setSeriesData(macdHistSeries, updatedMacdHistData);
-
-        setSeriesData(stochRsiKSeries, updatedStochRsiKData);
-        setSeriesData(stochRsiDSeries, updatedStochRsiDData);
-        
-        const latestData = updatedChartData[updatedChartData.length - 1];
-        if (latestData) {
-            infoBox.innerHTML = `${symbol} - O: ${latestData.open.toFixed(2)} H: ${latestData.high.toFixed(2)} L: ${latestData.low.toFixed(2)} C: ${latestData.close.toFixed(2)}`;
-        } else {
-                infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
-        }
-    });
-}
+initializeChartSystem().catch(error => {
+    console.error('Chart system initialization failed:', error);
+});

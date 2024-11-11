@@ -10,3 +10,7 @@ Flask-Caching
 aiohttp
 asyncio
 python-dotenv
+fastapi 
+uvicorn 
+python-multipart 
+jinja2
