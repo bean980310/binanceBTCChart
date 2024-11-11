@@ -2,6 +2,95 @@
 fetch('/data')
 .then(response => response.json())
 .then(data => {
+
+    const symbol = "BTCUSDT.P";
+    const infoBox = initializeInfoBox(symbol, data);
+
+    const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
+
+    const candlestickSeries = createCandlestickSeries(priceChart);
+    const volumeSeries = createVolumeSeries(volumeChart);
+
+    const ema9Series = createLineSeries(priceChart, 'blue', 2);
+    const ema60Series = createLineSeries(priceChart, 'red', 2);
+    const ema200Series = createLineSeries(priceChart, 'green', 2);
+
+    const rsiSeries = createLineSeries(rsiChart, 'purple', 1);
+    const rsiSmaSeries = createLineSeries(rsiChart, 'orange', 1);
+
+    const macdLineSeries = createLineSeries(macdChart, 'blue', 1)
+    const macdSignalSeries = createLineSeries(macdChart, 'orange', 1);
+    const macdHistSeries = createHistogramSeries(macdChart);
+
+    const stochRsiKSeries = createLineSeries(stochRsiChart, 'blue', 1)
+    const stochRsiDSeries = createLineSeries(stochRsiChart, 'orange', 1);
+
+    const chartData = transformChartData(data);
+    const volumeData = transformVolumeData(data);
+
+    const ema9Data = transformIndicatorData(data, 'EMA9');
+    const ema60Data = transformIndicatorData(data, 'EMA60');
+    const ema200Data = transformIndicatorData(data, 'EMA200');
+
+    const rsiData = transformIndicatorData(data, 'RSI');
+    const rsiSmaData = transformIndicatorData(data, 'RSI_SMA');
+
+    const macdLineData = transformIndicatorData(data, 'MACD');
+    const macdSignalData = transformIndicatorData(data, 'MACD_Signal');
+    const macdHistData = transformMacdHistData(data);
+
+    const stochRsiKData = transformIndicatorData(data, 'StochRSI_%K');
+    const stochRsiDData = transformIndicatorData(data, 'StochRSI_%D');
+
+    setSeriesData(candlestickSeries, chartData);
+    setSeriesData(volumeSeries, volumeData);
+
+    setSeriesData(ema9Series, ema9Data);
+    setSeriesData(ema60Series, ema60Data);
+    setSeriesData(ema200Series, ema200Data);
+
+    setSeriesData(rsiSeries, rsiData);
+    setSeriesData(rsiSmaSeries, rsiSmaData);
+
+    setSeriesData(macdLineSeries, macdLineData);
+    setSeriesData(macdSignalSeries, macdSignalData);
+    setSeriesData(macdHistSeries, macdHistData);
+
+    setSeriesData(stochRsiKSeries, stochRsiKData);
+    setSeriesData(stochRsiDSeries, stochRsiDData);
+
+    priceChart.subscribeCrosshairMove(param => updateOhlcInfo(param, infoBox, candlestickSeries, chartData, symbol));
+
+    synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart, stochRsiChart]);
+
+    // 1분마다 데이터 업데이트
+    setInterval(() => updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol), 100);
+});
+
+function initializeInfoBox(symbol, data){
+    const infoBox = document.createElement('div');
+    infoBox.style.position = 'absolute';
+    infoBox.style.top = '10px';
+    infoBox.style.left = '10px';
+    infoBox.style.color = '#000';
+    infoBox.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+    infoBox.style.padding = '5px 10px';
+    infoBox.style.borderRadius = '5px';
+    infoBox.style.fontFamily = 'Arial, sans-serif';
+    infoBox.style.fontSize = '14px';
+    document.body.appendChild(infoBox);
+
+    let lastData = data.length > 0 ? data[data.length - 1] : null;
+
+    if (lastData) {
+        infoBox.innerHTML = `${symbol} - O: ${lastData.Open.toFixed(2)} H: ${lastData.High.toFixed(2)} L: ${lastData.Low.toFixed(2)} C: ${lastData.Close.toFixed(2)}`;
+    } else {
+        infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
+    }
+    return infoBox;
+}
+
+function initializeCharts(){
     const chartOptions = {
         width: 800,
         layout: {
@@ -22,15 +111,23 @@ fetch('/data')
     const volumeChart = LightweightCharts.createChart(document.getElementById('volume-chart'), { ...chartOptions, height: 150 });
     const rsiChart = LightweightCharts.createChart(document.getElementById('rsi-chart'), { ...chartOptions, height: 150 });
     const macdChart = LightweightCharts.createChart(document.getElementById('macd-chart'), { ...chartOptions, height: 150 });
+    const stochRsiChart = LightweightCharts.createChart(document.getElementById('stochrsi-chart'), { ...chartOptions, height: 150 });
 
     // 시간축 숨김 설정
     volumeChart.timeScale().options().visible = false;
     rsiChart.timeScale().options().visible = false;
     macdChart.timeScale().options().visible = false;
+    stochRsiChart.timeScale().options().visible = false;
 
-    const candlestickSeries = priceChart.addCandlestickSeries();
+    return { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart };
+}
 
-    const volumeSeries = volumeChart.addHistogramSeries({
+function createCandlestickSeries(chart){
+    return chart.addCandlestickSeries();
+}
+
+function createVolumeSeries(chart){
+    return chart.addHistogramSeries({
         color: '#26a69a',
         priceFormat: {
             type: 'volume',
@@ -41,120 +138,17 @@ fetch('/data')
             bottom: 0,
         },
     });
+}
 
-    // 시간과 가격 데이터를 lightweight-charts 형식에 맞게 변환
-    const chartData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        open: item['Open'],
-        high: item['High'],
-        low: item['Low'],
-        close: item['Close'],
-    }));
-
-    candlestickSeries.setData(chartData);
-
-    // 기술 지표 추가 (예: EMA, RSI 등)
-    
-    // 볼륨 데이터 설정
-    const volumeData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['Volume'],
-        color: item['Close'] > item['Open'] ? '#26a69a' : '#ef5350', // 양봉: 초록색, 음봉: 빨간색
-    }));
-
-    volumeSeries.setData(volumeData);
-
-    // 예: EMA 라인 추가
-    const emaLineSeries = priceChart.addLineSeries({
-        color: 'blue',
-        lineWidth: 2,
+function createLineSeries(chart, color, lineWidth){
+    return chart.addLineSeries({
+        color: color,
+        lineWidth: lineWidth,
     });
+}
 
-    const emaData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['EMA9'], // EMA9 열 사용
-    })).filter(item => item.value !== null); // 결측치 제거
-
-    emaLineSeries.setData(emaData);
-
-    // 추가적인 지표도 동일한 방식으로 추가 가능합니다.
-
-    const emaLineSeries60 = priceChart.addLineSeries({
-        color: 'purple',
-        lineWidth: 2,
-    });
-
-    const emaData60 = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['EMA60'], // EMA9 열 사용
-    })).filter(item => item.value !== null); // 결측치 제거
-
-    emaLineSeries60.setData(emaData60);
-
-    const emaLineSeries200 = priceChart.addLineSeries({
-        color: 'cyan',
-        lineWidth: 2,
-    });
-
-    const emaData200 = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['EMA200'], // EMA9 열 사용
-    })).filter(item => item.value !== null); // 결측치 제거
-
-    emaLineSeries200.setData(emaData200);
-
-    // RSI 시리즈 추가
-    const rsiSeries = rsiChart.addLineSeries({
-        color: 'purple',
-        lineWidth: 1,
-    });
-
-    const rsiData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['RSI'],
-    })).filter(item => item.value !== null);
-
-    rsiSeries.setData(rsiData);
-
-    // RSI 이동평균선(SMA) 시리즈 추가
-    const rsiSmaSeries = rsiChart.addLineSeries({
-        color: 'orange',
-        lineWidth: 1,
-    });
-
-    // RSI 이동평균선 데이터 설정
-    const rsiSmaData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['RSI_SMA'],
-    })).filter(item => item.value !== null);
-
-    rsiSmaSeries.setData(rsiSmaData);
-
-    const macdLineSeries = macdChart.addLineSeries({
-        color: 'blue',
-        lineWidth: 1,
-    });
-
-    const macdLineData=data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['MACD'],
-    })).filter(item => item.value !== null);
-
-    macdLineSeries.setData(macdLineData)
-
-    const macdSignalSeries = macdChart.addLineSeries({
-        color: 'red',
-        lineWidth: 1,
-    });
-
-    const macdSignalData=data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        value: item['MACD_Signal'],
-    })).filter(item => item.value !== null);
-    
-    macdSignalSeries.setData(macdSignalData)
-
-    const macdHistSeries = macdChart.addHistogramSeries({
+function createHistogramSeries(chart){
+    return chart.addHistogramSeries({
         priceFormat: {
             type: 'price',
             precision: 5,
@@ -166,177 +160,105 @@ fetch('/data')
             bottom: 0,
         },
     });
+}
 
-    const macdHistData = data.map(item => {
-        const time = new Date(item['Open Time']).getTime() / 1000;
-        const value = item['MACD_Hist'];
-    
-        let color = value >= 0 ? '#26a69a' : '#ef5350';
-    
-        return {
-            time: time,
-            value: value,
-            color: color,
-        };
-    }).filter(item => item.value !== null);
-    
-    macdHistSeries.setData(macdHistData)
+function transformChartData(data){
+    return data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        open: item['Open'],
+        high: item['High'],
+        low: item['Low'],
+        close: item['Close'],
+    }));
+}
 
-     // OHLC 정보를 priceLine으로 추가하는 함수
-     function updateOhlcInfo(param) {
-        if (param && param.seriesData) {
-            const price = param.seriesData.get(candlestickSeries);
-            if (price) {
-                priceChart.removePriceLine(priceLineOpen);
-                priceChart.removePriceLine(priceLineHigh);
-                priceChart.removePriceLine(priceLineLow);
-                priceChart.removePriceLine(priceLineClose);
+function transformVolumeData(data){
+    return data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item['Volume'],
+        color: item['Close'] > item['Open'] ? '#26a69a' : '#ef5350',
+    }));
+}
 
-                // 시가, 고가, 저가, 종가 표시를 위한 priceLine 설정
-                priceLineOpen = priceChart.createPriceLine({
-                    price: price.open,
-                    color: 'blue',
-                    lineWidth: 1,
-                    title: `O: ${price.open.toFixed(2)}`,
-                });
-                priceLineHigh = priceChart.createPriceLine({
-                    price: price.high,
-                    color: 'green',
-                    lineWidth: 1,
-                    title: `H: ${price.high.toFixed(2)}`,
-                });
-                priceLineLow = priceChart.createPriceLine({
-                    price: price.low,
-                    color: 'red',
-                    lineWidth: 1,
-                    title: `L: ${price.low.toFixed(2)}`,
-                });
-                priceLineClose = priceChart.createPriceLine({
-                    price: price.close,
-                    color: 'purple',
-                    lineWidth: 1,
-                    title: `C: ${price.close.toFixed(2)}`,
-                });
+function transformIndicatorData(data, key){
+    return data.map(item => ({
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item[key],
+    })).filter(item => item.value !== null);
+}
+function transformMacdHistData(data){
+    return data.map(item => ({    
+        time: new Date(item['Open Time']).getTime() / 1000,
+        value: item['MACD_Hist'],
+        color: item['MACD_Hist'] >= 0 ? '#26a69a' : '#ef5350',
+    })).filter(item => item.value !== null);
+}
 
-                candlestickSeries.applyOptions({
-                    priceLineVisible: true,
-                });
-            }
-        }
+function setSeriesData(series, data){
+    series.setData(data);
+}
+
+function updateOhlcInfo(param, infoBox, candlestickSeries, chartData, symbol) {
+    let price = param?.seriesData?.get(candlestickSeries) || chartData[chartData.length - 1];
+
+    if (price) {
+        infoBox.innerHTML = `${symbol} - O: ${price.open.toFixed(2)} H: ${price.high.toFixed(2)} L: ${price.low.toFixed(2)} C: ${price.close.toFixed(2)}`;
+    } else {
+        infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
     }
+}
 
-    // 초기 priceLine 변수 정의
-    let priceLineOpen, priceLineHigh, priceLineLow, priceLineClose;
-
-    // 차트에서 마우스 이동 시 OHLC 정보를 업데이트
-    priceChart.subscribeCrosshairMove(updateOhlcInfo);
-
-    // 시간축 동기화
-    const synchronizeCharts = (mainChart, linkedCharts) => {
-        mainChart.timeScale().subscribeVisibleTimeRangeChange((newVisibleTimeRange) => {
-            linkedCharts.forEach(linkedChart => {
-                linkedChart.timeScale().setVisibleRange(newVisibleTimeRange);
-            });
+function synchronizeCharts(mainChart, linkedCharts) {
+    mainChart.timeScale().subscribeVisibleTimeRangeChange((newVisibleTimeRange) => {
+        linkedCharts.forEach(linkedChart => {
+            linkedChart.timeScale().setVisibleRange(newVisibleTimeRange);
         });
-        // mainChart.priceScale().subscribeVisiblePriceRangeChange((newVisiblePriceRange) => {
-        //     linkedCharts.forEach(linkedChart => {
-        //         linkedChart.priceScale().setVisiblePriceRange(newVisiblePriceRange);
-        //     });
-        // });
-    };
+    });
+}
 
-    synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart]);
+function updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol) {
+    fetch('/data')
+    .then(response => response.json())
+    .then(newData => {
+        const updatedChartData = transformChartData(newData);
+        const updatedVolumeData = transformVolumeData(newData);
 
-    function updateData() {
-        fetch('/data')
-            .then(response => response.json())
-            .then(newData => {
-                // 새로운 데이터로 시리즈 업데이트
-                const updatedChartData = newData.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    open: item['Open'],
-                    high: item['High'],
-                    low: item['Low'],
-                    close: item['Close'],
-                }));
-                candlestickSeries.setData(updatedChartData);
+        const updatedEma9Data = transformIndicatorData(newData, 'EMA9');
+        const updatedeEma60Data = transformIndicatorData(newData, 'EMA60');
+        const updatedeEma200Data = transformIndicatorData(newData, 'EMA200');
 
-                // 볼륨 데이터 업데이트
-                const updatedVolumeData = data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['Volume'],
-                    color: item['Close'] > item['Open'] ? '#26a69a' : '#ef5350', // 양봉: 초록색, 음봉: 빨간색
-                }));
+        const updatedRsiData = transformIndicatorData(newData, 'RSI');
+        const updatedRsiSmaData = transformIndicatorData(newData, 'RSI_SMA');
 
-                volumeSeries.setData(updatedVolumeData);
+        const updatedMacdLineData = transformIndicatorData(newData, 'MACD');
+        const updatedMacdSignalData = transformIndicatorData(newData, 'MACD_Signal');
+        const updatedMacdHistData = transformMacdHistData(newData)
 
-                // 지표도 동일하게 업데이트
-                const updatedEmaData = data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['EMA9'], // EMA9 열 사용
-                })).filter(item => item.value !== null); // 결측치 제거
-                emaLineSeries.setData(updatedEmaData)
+        const updatedStochRsiKData = transformIndicatorData(newData, 'StochRSI_%K');
+        const updatedStochRsiDData = transformIndicatorData(newData, 'StochRSI_%D');
 
-                const updatedeEmaData60 = data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: item['EMA60'], // EMA9 열 사용
-                })).filter(item => item.value !== null); // 결측치 제거
+        setSeriesData(candlestickSeries, updatedChartData);
+        setSeriesData(volumeSeries, updatedVolumeData);
 
-                emaLineSeries60.setData(updatedeEmaData60);
+        setSeriesData(ema9Series, updatedEma9Data);
+        setSeriesData(ema60Series, updatedeEma60Data);
+        setSeriesData(ema200Series, updatedeEma200Data);
 
-                const updatedeEmaData200 = data.map(item => ({
-                time: new Date(item['Open Time']).getTime() / 1000,
-                value: item['EMA200'], // EMA9 열 사용
-                })).filter(item => item.value !== null); // 결측치 제거
+        setSeriesData(rsiSeries, updatedRsiData);
+        setSeriesData(rsiSmaSeries, updatedRsiSmaData);
 
-                emaLineSeries200.setData(updatedeEmaData200);
+        setSeriesData(macdLineSeries, updatedMacdLineData);
+        setSeriesData(macdSignalSeries, updatedMacdSignalData);
+        setSeriesData(macdHistSeries, updatedMacdHistData);
 
-                const updatedRsiData = data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['RSI'],
-                })).filter(item => item.value !== null);
-
-                rsiSeries.setData(updatedRsiData);
-
-                // RSI 이동평균선 데이터 설정
-                const updatedRsiSmaData = data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['RSI_SMA'],
-                })).filter(item => item.value !== null && !isNaN(item.value));
-
-                rsiSmaSeries.setData(updatedRsiSmaData);
-
-                const updatedMacdLineData=data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['MACD'],
-                })).filter(item => item.value !== null);
-            
-                macdLineSeries.setData(updatedMacdLineData)
-
-                const updatedMacdSignalData=data.map(item => ({
-                    time: new Date(item['Open Time']).getTime() / 1000,
-                    value: item['MACD_Signal'],
-                })).filter(item => item.value !== null);
-                
-                macdSignalSeries.setData(updatedMacdSignalData)
-
-                const updatedMacdHistData=data.map(item => {
-                    const time = new Date(item['Open Time']).getTime() / 1000;
-                    const value = item['MACD_Hist'];
-                
-                    let color = value >= 0 ? '#26a69a' : '#ef5350';
-                
-                    return {
-                        time: time,
-                        value: value,
-                        color: color,
-                    };
-                }).filter(item => item.value !== null);
-            
-                macdHistSeries.setData(updatedMacdHistData)
-            
-            });
+        setSeriesData(stochRsiKSeries, updatedStochRsiKData);
+        setSeriesData(stochRsiDSeries, updatedStochRsiDData);
+        
+        const latestData = updatedChartData[updatedChartData.length - 1];
+        if (latestData) {
+            infoBox.innerHTML = `${symbol} - O: ${latestData.open.toFixed(2)} H: ${latestData.high.toFixed(2)} L: ${latestData.low.toFixed(2)} C: ${latestData.close.toFixed(2)}`;
+        } else {
+                infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
         }
-    // 1분마다 데이터 업데이트
-    setInterval(updateData, 100);
-});
+    });
+}
