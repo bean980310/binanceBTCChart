@@ -1,21 +1,15 @@
 from flask import Flask, jsonify, render_template
-from flask_caching import Cache
 from binance.client import Client
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-import matplotlib.pyplot as plt
 from pathlib import Path
 from getpass import getpass
 import ta
 import os
 import time
-import cachetools.func
 
 app=Flask(__name__)
-
-# cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})  # 5분 캐시 유지
-# cache.init_app(app)
 
 api_key_file=Path.home()/'.binance'/'api_key.txt'
 api_secret_file=Path.home()/'.binance'/'api_secret.txt'
@@ -51,10 +45,6 @@ client = Client(api_key, api_secret)
 
 def calculate_indicators(data):
     # 이동 평균 계산
-    # data['SMA20'] = ta.trend.sma_indicator(data['Close'], window=20)
-    # data['SMA60'] = ta.trend.sma_indicator(data['Close'], window=60)
-    # data['SMA200'] = ta.trend.sma_indicator(data['Close'], window=200)
-
     data['EMA9'] = ta.trend.ema_indicator(data['Close'], window=9)
     data['EMA60'] = ta.trend.ema_indicator(data['Close'], window=60)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
@@ -84,16 +74,7 @@ def calculate_support_resistance_levels(data):
         if len(lows) > i + 3:
             data[f'Support_2nd_{level}'] = lows[i + 3]
 
-
-# def update_data_cache(symbol, interval, lookback):
-#     data = get_historical_klines(symbol, interval, lookback)
-#     calculate_indicators(data)
-#     calculate_support_resistance_levels(data)
-#     # Redis에 데이터 저장 (JSON 형식으로 직렬화)
-#     redis_client.set("market_data", data.to_json(orient='records', date_format='iso'))
-#     print("Data cache updated.")
-
-def fetch_historical_data(symbol='BTCUSDT', interval=Client.KLINE_INTERVAL_4HOUR, lookback='180 days ago UTC+9:00'):
+def get_historical_klines(symbol, interval, lookback):
     klines = client.get_historical_klines(symbol, interval, lookback)
     data = pd.DataFrame(klines, columns=[
         'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
@@ -156,11 +137,8 @@ def update_and_save_prediction():
         )
         time.sleep(60)  # 1분마다 업데이트
 
-# scheduler.add_job(update_data_cache, 'interval', minutes=1)
-
-# @cache.cached(timeout=300, key_prefix='market_data') 
 def get_data_and_indicators():
-    data = fetch_historical_data()
+    data = get_historical_klines('BTCUSDT', Client.KLINE_INTERVAL_4HOUR, '180 days ago UTC+9:00')
     calculate_indicators(data)
     calculate_support_resistance_levels(data)
     return data
