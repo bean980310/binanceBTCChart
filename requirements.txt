@@ -4,6 +4,9 @@ matplotlib
 python-binance
 scikit-learn
 ta
-flask
+flask[async]
 cachetools
 Flask-Caching
+aiohttp
+asyncio
+python-dotenv
