@@ -42,6 +42,33 @@
         </style>
         <!-- lightweight-charts 라이브러리 포함 -->
         <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+        <script>
+            async function updateTitleWithPrice() {
+                try {
+                    const response = await fetch('/data');
+                    const data = await response.json();
+                    
+                    // Get latest and previous candlestick data
+                    const latestPrice = data[data.length - 1].Close;
+                    const previousPrice = data.length > 1 ? data[data.length - 2].Close : null;
+
+                    // Calculate the percentage change
+                    let changePercent = 0;
+                    if (previousPrice !== null) {
+                        changePercent = ((latestPrice - previousPrice) / previousPrice) * 100;
+                    }
+
+                    // Update the title with the latest price and percentage change
+                    document.title = `Crypto Dashboard - BTC: $${latestPrice.toFixed(2)} (${changePercent.toFixed(2)}%)`;
+                } catch (error) {
+                    console.error("Error fetching price data:", error);
+                }
+            }
+
+            // Update the title with price every 10 seconds
+            setInterval(updateTitleWithPrice, 10000);
+            window.onload = updateTitleWithPrice;
+        </script>
     </head>
     <body>
         <div class="header">
