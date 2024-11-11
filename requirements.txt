@@ -14,3 +14,4 @@ fastapi
 uvicorn 
 python-multipart 
 jinja2
+lightweight-charts
