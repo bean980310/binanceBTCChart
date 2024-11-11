@@ -14,9 +14,8 @@ import cachetools.func
 
 app=Flask(__name__)
 
-cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})  # 5분 캐시 유지
-cache.init_app(app)
-
+# cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})  # 5분 캐시 유지
+# cache.init_app(app)
 
 api_key_file=Path.home()/'.binance'/'api_key.txt'
 api_secret_file=Path.home()/'.binance'/'api_secret.txt'
@@ -94,7 +93,7 @@ def calculate_support_resistance_levels(data):
 #     redis_client.set("market_data", data.to_json(orient='records', date_format='iso'))
 #     print("Data cache updated.")
 
-def fetch_historical_data(symbol='BTCUSDT', interval=Client.KLINE_INTERVAL_4HOUR, lookback='128 days ago UTC+9:00'):
+def fetch_historical_data(symbol='BTCUSDT', interval=Client.KLINE_INTERVAL_4HOUR, lookback='180 days ago UTC+9:00'):
     klines = client.get_historical_klines(symbol, interval, lookback)
     data = pd.DataFrame(klines, columns=[
         'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
@@ -159,7 +158,7 @@ def update_and_save_prediction():
 
 # scheduler.add_job(update_data_cache, 'interval', minutes=1)
 
-@cache.cached(timeout=300, key_prefix='market_data') 
+# @cache.cached(timeout=300, key_prefix='market_data') 
 def get_data_and_indicators():
     data = fetch_historical_data()
     calculate_indicators(data)
