@@ -59,12 +59,20 @@ fetch('/data')
     setSeriesData(stochRsiKSeries, stochRsiKData);
     setSeriesData(stochRsiDSeries, stochRsiDData);
 
+    let supportSeriesList = [];
+    let resistanceSeriesList = [];
+
     priceChart.subscribeCrosshairMove(param => updateOhlcInfo(param, infoBox, candlestickSeries, chartData, symbol));
 
     synchronizeCharts(priceChart, [volumeChart, rsiChart, macdChart, stochRsiChart]);
 
     // 1분마다 데이터 업데이트
     setInterval(() => updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol), 100);
+
+    setInterval(updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart), 60000);
+})
+.catch(error => {
+    console.error('Fetch error:', error);
 });
 
 function initializeInfoBox(symbol, data){
@@ -215,6 +223,78 @@ function synchronizeCharts(mainChart, linkedCharts) {
         });
     });
 }
+
+function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
+    supportSeriesList.forEach(series => priceChart.removeSeries(series));
+    resistanceSeriesList.forEach(series => priceChart.removeSeries(series));
+    supportSeriesList = [];
+    resistanceSeriesList = [];
+
+    // 1차 및 2차 지지선과 저항선 레벨 가져오기
+    const levels = ["Level1", "Level2", "Level3"];
+    const supportColors = ['green', 'lightgreen'];
+    const resistanceColors = ['red', 'pink'];
+
+    levels.forEach((level, levelIndex) => {
+        const support1st = data[0][`Support_1st_${level}`];
+        const support2nd = data[0][`Support_2nd_${level}`];
+        const resistance1st = data[0][`Resistance_1st_${level}`];
+        const resistance2nd = data[0][`Resistance_2nd_${level}`];
+
+        if (support1st !== undefined) {
+            const support1stSeries = priceChart.addLineSeries({
+                color: supportColors[0],
+                lineWidth: 1,
+                title: `Support 1차 ${level}`,
+            });
+            support1stSeries.setData(data.map(item => ({
+                time: new Date(item['Open Time']).getTime() / 1000,
+                value: support1st,
+            })));
+            supportSeriesList.push(support1stSeries);
+        }
+
+        if (support2nd !== undefined) {
+            const support2ndSeries = priceChart.addLineSeries({
+                color: supportColors[1],
+                lineWidth: 1,
+                title: `Support 2차 ${level}`,
+            });
+            support2ndSeries.setData(data.map(item => ({
+                time: new Date(item['Open Time']).getTime() / 1000,
+                value: support2nd,
+            })));
+            supportSeriesList.push(support2ndSeries);
+        }
+
+        if (resistance1st !== undefined) {
+            const resistance1stSeries = priceChart.addLineSeries({
+                color: resistanceColors[0],
+                lineWidth: 1,
+                title: `Resistance 1차 ${level}`,
+            });
+            resistance1stSeries.setData(data.map(item => ({
+                time: new Date(item['Open Time']).getTime() / 1000,
+                value: resistance1st,
+            })));
+            resistanceSeriesList.push(resistance1stSeries);
+        }
+
+        if (resistance2nd !== undefined) {
+            const resistance2ndSeries = priceChart.addLineSeries({
+                color: resistanceColors[1],
+                lineWidth: 1,
+                title: `Resistance 2차 ${level}`,
+            });
+            resistance2ndSeries.setData(data.map(item => ({
+                time: new Date(item['Open Time']).getTime() / 1000,
+                value: resistance2nd,
+            })));
+            resistanceSeriesList.push(resistance2ndSeries);
+        }
+    });
+}
+
 
 function updateData(candlestickSeries, volumeSeries, ema9Series, ema60Series, ema200Series, rsiSeries, rsiSmaSeries, macdLineSeries, macdSignalSeries, macdHistSeries, stochRsiKSeries, stochRsiDSeries, infoBox, symbol) {
     fetch('/data')
