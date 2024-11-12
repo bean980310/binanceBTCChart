@@ -7,7 +7,9 @@ async function initializeChartSystem() {
         const symbol = "BTCUSDT.P";
         const infoBox = initializeInfoBox(symbol, data);
 
-        const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
+        const priceChart = LightweightCharts.createChart(document.getElementById('price-chart'), { ...chartOptions, height: 600 });
+
+        const { volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
 
         const series = initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stochRsiChart);
         
@@ -17,6 +19,33 @@ async function initializeChartSystem() {
 
         let supportSeriesList = [];
         let resistanceSeriesList = [];
+
+        // Add trendlines
+        let trendlineSeries = [];
+        
+        // Add resistance lines
+        data.trendlines.resistance.forEach(line => {
+            const series = addTrendline(
+                priceChart, 
+                line.start,
+                line.end,
+                line.color,
+                line.lineWidth
+            );
+            trendlineSeries.push(series);
+        });
+        
+        // Add support lines
+        data.trendlines.support.forEach(line => {
+            const series = addTrendline(
+                priceChart,
+                line.start,
+                line.end,
+                line.color,
+                line.lineWidth
+            );
+            trendlineSeries.push(series);
+        });
 
         priceChart.subscribeCrosshairMove(param => 
             updateOhlcInfo(param, infoBox, series.candlestickSeries, chartData.ohlcData, symbol)
@@ -33,6 +62,43 @@ async function initializeChartSystem() {
         
         setInterval(async () => {
             await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+        }, 60000);
+
+        // Update data periodically
+        setInterval(async () => {
+            const newResponse = await fetch('/data');
+            const newData = await newResponse.json();
+            
+            const newChartData = await transformAllData(newData.klines);
+            await updateAllSeriesData(series, newChartData);
+            
+            // Remove old trendlines
+            trendlineSeries.forEach(series => priceChart.removeSeries(series));
+            trendlineSeries = [];
+            
+            // Add new trendlines
+            newData.trendlines.resistance.forEach(line => {
+                const series = addTrendline(
+                    priceChart,
+                    line.start,
+                    line.end,
+                    line.color,
+                    line.lineWidth
+                );
+                trendlineSeries.push(series);
+            });
+            
+            newData.trendlines.support.forEach(line => {
+                const series = addTrendline(
+                    priceChart,
+                    line.start,
+                    line.end,
+                    line.color,
+                    line.lineWidth
+                );
+                trendlineSeries.push(series);
+            });
+            
         }, 60000);
 
     } catch (error) {
@@ -178,12 +244,20 @@ async function addLevelLine(value, label, color, timeData, priceChart, seriesLis
     seriesList.push(series);
 }
 
-function updateInfoBox(infoBox, symbol, latestData) {
-    if (latestData) {
-        infoBox.innerHTML = `${symbol} - O: ${latestData.open.toFixed(2)} H: ${latestData.high.toFixed(2)} L: ${latestData.low.toFixed(2)} C: ${latestData.close.toFixed(2)}`;
-    } else {
-        infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
-    }
+function addTrendline(chart, startPoint, endPoint, color, lineWidth) {
+    const lineSeries = chart.addLineSeries({
+        color: color,
+        lineWidth: lineWidth,
+        lastValueVisible: false,
+        priceLineVisible: false,
+    });
+
+    lineSeries.setData([
+        { time: startPoint.time, value: startPoint.value },
+        { time: endPoint.time, value: endPoint.value }
+    ]);
+
+    return lineSeries;
 }
 
 function initializeInfoBox(symbol, data){
