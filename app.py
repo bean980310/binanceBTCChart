@@ -180,13 +180,13 @@ def predict_price(data: pd.DataFrame) -> pd.Series:
 
 async def save_prediction_to_csv(prediction: pd.Series, timestamp: datetime) -> None:
     prediction_data = {
-        "timestamp": timestamp.isoformat(),
-        "actual_high": prediction['High'],
-        "actual_low": prediction['Low'],
-        "actual_close": prediction['Close'],
-        "predicted_high": prediction['Predicted_High'],
-        "predicted_low": prediction['Predicted_Low'],
-        "predicted_close": prediction['Predicted_Close']
+        "timestamp": timestamp,
+        "actual_high": round(prediction['High'], 1),
+        "actual_low": round(prediction['Low'], 1),
+        "actual_close": round(prediction['Close'], 1),
+        "predicted_high": round(prediction['Predicted_High'], 1),
+        "predicted_low": round(prediction['Predicted_Low'], 1),
+        "predicted_close": round(prediction['Predicted_Close'], 1)
     }
     
     file_exists = predictions_file.exists()
@@ -199,7 +199,7 @@ async def update_predictions():
     while True:
         data = await get_data_and_indicators(app.state.client)
         prediction = predict_price(data)
-        timestamp = datetime.now()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         await save_prediction_to_csv(prediction, timestamp)
         print(f"Prediction updated at {timestamp}")
         await asyncio.sleep(60)
