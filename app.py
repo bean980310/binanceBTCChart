@@ -16,7 +16,7 @@ import os
 import asyncio
 import uvicorn
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import lightweight_charts as lwc
 import requests
@@ -116,15 +116,43 @@ def calculate_support_resistance_levels(data: pd.DataFrame) -> None:
         if len(lows) > i + 3:
             data[f'Support_2nd_{level}'] = lows[i + 3]
 
-async def get_historical_klines(client, symbol: str, interval: str, lookback: str) -> pd.DataFrame:
-    klines = await client.get_historical_klines(symbol, interval, lookback)
+async def get_historical_klines(client, symbol: str, interval: str, start_date: str = None, end_date: str = None, limit: int = 1000) -> pd.DataFrame:
+    # 기본값 설정
+    if end_date is None:
+        end_time = datetime.now()  # 현재 시간을 기본 종료 시간으로 설정
+    else:
+        end_time = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+
+    end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    if start_date is None:
+        start_str = None
+    else:
+        start_time = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+        start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 데이터 수집
+    klines = await client.get_historical_klines(symbol, interval, start_str, end_str, limit)
+
+    # 데이터가 없으면 빈 데이터프레임 반환
+    if not klines:
+        return pd.DataFrame(columns=[
+            'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
+            'Close Time', 'Quote Asset Volume', 'Number of Trades',
+            'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
+        ])
+
+    # 데이터프레임으로 변환
     data = pd.DataFrame(klines, columns=[
         'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
         'Close Time', 'Quote Asset Volume', 'Number of Trades',
         'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
     ])
+
+    # 타임스탬프 열을 날짜 형식으로 변환하고 인덱스로 설정
     data['Open Time'] = pd.to_datetime(data['Open Time'], unit='ms')
     data.set_index('Open Time', inplace=True)
+
     return data.astype(float)
 
 def predict_price(data: pd.DataFrame) -> pd.Series:
@@ -177,7 +205,7 @@ async def update_predictions():
         await asyncio.sleep(60)
 
 async def get_data_and_indicators(client: AsyncClient) -> pd.DataFrame:
-    data = await get_historical_klines(client, 'BTCUSDT', AsyncClient.KLINE_INTERVAL_4HOUR, '180 days ago UTC+9:00')
+    data = await get_historical_klines(client, "BTCUSDT", AsyncClient.KLINE_INTERVAL_4HOUR)
     calculate_indicators(data)
     calculate_support_resistance_levels(data)
     return data
