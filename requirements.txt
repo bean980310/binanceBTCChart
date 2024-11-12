@@ -16,3 +16,6 @@ uvicorn
 python-multipart 
 jinja2
 lightweight-charts
+pandas-ta
+mplfinance
+ccxt

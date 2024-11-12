@@ -2,7 +2,7 @@
 async function initializeChartSystem() {
     try {
         const response = await fetch('/data');
-        const { data, trendlines } = await response.json();
+        const { data, trendlines, supertrend } = await response.json();
 
         const symbol = "BTCUSDT.P";
         const infoBox = initializeInfoBox(symbol, data);
@@ -14,6 +14,8 @@ async function initializeChartSystem() {
         const chartData = await transformAllData(data);
         
         await updateAllSeriesData(series, chartData);
+
+        // const supertrendSeries = initializeSupertrendSeries(priceChart, supertrend);
 
         let supportSeriesList = [];
         let resistanceSeriesList = [];
@@ -31,6 +33,10 @@ async function initializeChartSystem() {
         setInterval(async () => {
             await updateAllData(series, infoBox, symbol);
         }, 100);
+
+        // setInterval(async() => {
+        //     await updateSupertrendData(supertrendSeries);
+        // }, 60000);
 
         await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
         
@@ -229,6 +235,45 @@ async function updateTrendline(data, trendlineSeries, priceChart){
     }
 }
 
+// 슈퍼트렌드 데이터 업데이트
+async function updateSupertrendData(supertrendSeries) {
+    try {
+        const response = await fetch('/data');
+        const { supertrend } = await response.json();
+
+        const upperbandData = supertrend.map(item => ({
+            time: new Date(item.date).getTime() / 1000,
+            value: item.Upperband,
+        }));
+
+        const lowerbandData = supertrend.map(item => ({
+            time: new Date(item.date).getTime() / 1000,
+            value: item.Lowerband,
+        }));
+
+        const buySignals = supertrend
+            .filter(item => item.Signals === 1)
+            .map(item => ({
+                time: new Date(item.date).getTime() / 1000,
+                value: item.Close,
+            }));
+
+        const sellSignals = supertrend
+            .filter(item => item.signals === -1)
+            .map(item => ({
+                time: new Date(item.date).getTime() / 1000,
+                value: item.Close,
+            }));
+
+        supertrendSeries.upperbandSeries.setData(upperbandData);
+        supertrendSeries.lowerbandSeries.setData(lowerbandData);
+        supertrendSeries.buySignalSeries.setData(buySignals);
+        supertrendSeries.sellSignalSeries.setData(sellSignals);
+    } catch (error) {
+        console.error('Supertrend update error:', error);
+    }
+}
+
 function addTrendline(chart, startPoint, endPoint, color, lineWidth) {
     const lineSeries = chart.addLineSeries({
         color: color,
@@ -274,6 +319,64 @@ function initializeInfoBox(symbol, data){
         infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
     }
     return infoBox;
+}
+
+// 슈퍼트렌드 시리즈 초기화
+function initializeSupertrendSeries(priceChart, supertrendData) {
+    const upperbandSeries = priceChart.addLineSeries({
+        color: 'red',
+        lineWidth: 1,
+        title: 'Supertrend Upper Band',
+    });
+
+    const lowerbandSeries = priceChart.addLineSeries({
+        color: 'green',
+        lineWidth: 1,
+        title: 'Supertrend Lower Band',
+    });
+
+    const buySignalSeries = priceChart.addHistogramSeries({
+        color: '#2cf651',
+        priceFormat: { type: 'price' },
+        scaleMargins: { top: 0.7, bottom: 0 },
+    });
+
+    const sellSignalSeries = priceChart.addHistogramSeries({
+        color: '#f50100',
+        priceFormat: { type: 'price' },
+        scaleMargins: { top: 0.7, bottom: 0 },
+    });
+
+    const upperbandData = supertrendData.map(item => ({
+        time: new Date(item.date).getTime() / 1000,
+        value: item.upperband,
+    }));
+
+    const lowerbandData = supertrendData.map(item => ({
+        time: new Date(item.date).getTime() / 1000,
+        value: item.lowerband,
+    }));
+
+    const buySignals = supertrendData
+        .filter(item => item.Signals === 1)
+        .map(item => ({
+            time: new Date(item.date).getTime() / 1000,
+            value: item.Close,
+        }));
+
+    const sellSignals = supertrendData
+        .filter(item => item.Signals === -1)
+        .map(item => ({
+            time: new Date(item.date).getTime() / 1000,
+            value: item.Close,
+        }));
+
+    upperbandSeries.setData(upperbandData);
+    lowerbandSeries.setData(lowerbandData);
+    buySignalSeries.setData(buySignals);
+    sellSignalSeries.setData(sellSignals);
+
+    return { upperbandSeries, lowerbandSeries, buySignalSeries, sellSignalSeries };
 }
 
 function initializeCharts(){
