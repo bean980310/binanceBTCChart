@@ -8,6 +8,7 @@ flask[async]
 cachetools
 Flask-Caching
 aiohttp
+aiofiles
 asyncio
 python-dotenv
 fastapi 

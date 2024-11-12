@@ -29,6 +29,8 @@ async function initializeChartSystem() {
             await updateAllData(series, infoBox, symbol);
         }, 100);
 
+        await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+        
         setInterval(async () => {
             await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
         }, 60000);
@@ -106,69 +108,74 @@ async function updateAllData(series, infoBox, symbol) {
     }
 }
 
-// 지지/저항선 업데이트 함수를 async로 변환
 async function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
     try {
-        // 기존 라인 제거
-        supportSeriesList.forEach(series => priceChart.removeSeries(series));
-        resistanceSeriesList.forEach(series => priceChart.removeSeries(series));
-        
-        supportSeriesList = [];
-        resistanceSeriesList = [];
+        // 기존 라인 제거를 비동기 처리하고 모든 라인 제거가 완료될 때까지 대기
+        await Promise.all(supportSeriesList.map(series => priceChart.removeSeries(series)));
+        await Promise.all(resistanceSeriesList.map(series => priceChart.removeSeries(series)));
+
+        supportSeriesList.length = 0;
+        resistanceSeriesList.length = 0;
 
         const levels = ["Level1", "Level2", "Level3"];
         const supportColors = ['green', 'lightgreen'];
         const resistanceColors = ['red', 'pink'];
 
-        levels.forEach(level => {
+        // 각 레벨에 대한 지지/저항선을 비동기적으로 추가
+        await Promise.all(levels.map(level => 
             addSupportResistanceLevel(
                 data, level, priceChart, 
                 supportSeriesList, resistanceSeriesList,
                 supportColors, resistanceColors
-            );
-        });
+            )
+        ));
     } catch (error) {
         console.error('Support/Resistance update error:', error);
     }
 }
 
-// 지지/저항 레벨 추가 헬퍼 함수
-function addSupportResistanceLevel(data, level, priceChart, supportSeriesList, resistanceSeriesList, supportColors, resistanceColors) {
-    const timeData = data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000
+async function addSupportResistanceLevel(data, level, priceChart, supportSeriesList, resistanceSeriesList, supportColors, resistanceColors) {
+    const timeData = data.map(item => {
+        const timestamp = new Date(item['Open Time']).getTime() / 1000;
+        return isNaN(timestamp) ? null : { time: timestamp };
+    }).filter(item => item !== null); // 유효하지 않은 타임스탬프는 제외
+
+    const support1st = data[0]?.[`Support_1st_${level}`] ?? null;
+    const support2nd = data[0]?.[`Support_2nd_${level}`] ?? null;
+    const resistance1st = data[0]?.[`Resistance_1st_${level}`] ?? null;
+    const resistance2nd = data[0]?.[`Resistance_2nd_${level}`] ?? null;
+
+    const promises = [];
+    if (support1st != null) {
+        promises.push(addLevelLine(support1st, `Support 1차 ${level}`, supportColors[0], timeData, priceChart, supportSeriesList));
+    }
+    if (support2nd != null) {
+        promises.push(addLevelLine(support2nd, `Support 2차 ${level}`, supportColors[1], timeData, priceChart, supportSeriesList));
+    }
+    if (resistance1st != null) {
+        promises.push(addLevelLine(resistance1st, `Resistance 1차 ${level}`, resistanceColors[0], timeData, priceChart, resistanceSeriesList));
+    }
+    if (resistance2nd != null) {
+        promises.push(addLevelLine(resistance2nd, `Resistance 2차 ${level}`, resistanceColors[1], timeData, priceChart, resistanceSeriesList));
+    }
+
+    await Promise.all(promises);
+}
+
+async function addLevelLine(value, label, color, timeData, priceChart, seriesList) {
+    const series = priceChart.addLineSeries({
+        color: color,
+        lineWidth: 1,
+        title: label
+    });
+
+    const lineData = timeData.map(time => ({
+        time: time.time,
+        value: value
     }));
-
-    const support1st = data[0][`Support_1st_${level}`];
-    const support2nd = data[0][`Support_2nd_${level}`];
-    const resistance1st = data[0][`Resistance_1st_${level}`];
-    const resistance2nd = data[0][`Resistance_2nd_${level}`];
-
-    addLevelLine(support1st, `Support 1차 ${level}`, supportColors[0], timeData, priceChart, supportSeriesList);
-    addLevelLine(support2nd, `Support 2차 ${level}`, supportColors[1], timeData, priceChart, supportSeriesList);
-    addLevelLine(resistance1st, `Resistance 1차 ${level}`, resistanceColors[0], timeData, priceChart, resistanceSeriesList);
-    addLevelLine(resistance2nd, `Resistance 2차 ${level}`, resistanceColors[1], timeData, priceChart, resistanceSeriesList);
-}
-
-// 레벨 라인 추가 헬퍼 함수
-function addLevelLine(level, title, color, timeData, priceChart, seriesList) {
-    if (level !== undefined) {
-        const series = priceChart.addLineSeries({
-            color: color,
-            lineWidth: 1,
-            title: title,
-        });
-        series.setData(timeData.map(time => ({ ...time, value: level })));
-        seriesList.push(series);
-    }
-}
-
-// InfoBox 업데이트 헬퍼 함수
-function updateInfoBox(infoBox, symbol, latestData) {
-    if (latestData) {
-        infoBox.innerHTML = `${symbol} - O: ${latestData.open.toFixed(2)} H: ${latestData.high.toFixed(2)} L: ${latestData.low.toFixed(2)} C: ${latestData.close.toFixed(2)}`;
-    } else {
-        infoBox.innerHTML = `${symbol} - O: N/A H: N/A L: N/A C: N/A`;
-    }
+    
+    await series.setData(lineData);
+    seriesList.push(series);
 }
 
 function initializeInfoBox(symbol, data){
