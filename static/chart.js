@@ -2,7 +2,7 @@
 async function initializeChartSystem() {
     try {
         const response = await fetch('/data');
-        const data = await response.json();
+        const { data, trendlines } = await response.json();
 
         const symbol = "BTCUSDT.P";
         const infoBox = initializeInfoBox(symbol, data);
@@ -17,6 +17,9 @@ async function initializeChartSystem() {
 
         let supportSeriesList = [];
         let resistanceSeriesList = [];
+
+        let trendlineSeries = [];
+        await updateTrendline(trendlines, trendlineSeries, priceChart)
 
         priceChart.subscribeCrosshairMove(param => 
             updateOhlcInfo(param, infoBox, series.candlestickSeries, chartData.ohlcData, symbol)
@@ -33,6 +36,10 @@ async function initializeChartSystem() {
         
         setInterval(async () => {
             await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+        }, 60000);
+
+        setInterval(async () => {
+            await updateTrendline(trendlines, trendlineSeries, priceChart);
         }, 60000);
 
     } catch (error) {
@@ -96,9 +103,9 @@ async function updateAllSeriesData(series, chartData) {
 async function updateAllData(series, infoBox, symbol) {
     try {
         const response = await fetch('/data');
-        const newData = await response.json();
+        const { data } = await response.json();
         
-        const chartData = await transformAllData(newData);
+        const chartData = await transformAllData(data);
         await updateAllSeriesData(series, chartData);
         
         const latestData = chartData.ohlcData[chartData.ohlcData.length - 1];
@@ -176,6 +183,66 @@ async function addLevelLine(value, label, color, timeData, priceChart, seriesLis
     
     await series.setData(lineData);
     seriesList.push(series);
+}
+
+async function updateTrendline(data, trendlineSeries, priceChart){ 
+    trendlineSeries.forEach(series => priceChart.removeSeries(series));
+    trendlineSeries = [];
+
+    // Add resistance lines
+    data.resistance.forEach(line => {
+        const series = addTrendline(
+            priceChart, 
+            line.start,
+            line.end,
+            line.color,
+            line.lineWidth
+        );
+        trendlineSeries.push(series);
+    });
+    
+    // Add support lines
+    data.support.forEach(line => {
+        const series = addTrendline(
+            priceChart,
+            line.start,
+            line.end,
+            line.color,
+            line.lineWidth
+        );
+        trendlineSeries.push(series);
+    });
+
+    // Add channel lines
+    if (data.channels) {
+        data.channels.forEach(channel => {
+            const series = priceChart.addLineSeries({
+                color: channel.color,
+                lineWidth: channel.lineWidth,
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+            
+            series.setData(channel.points);
+            trendlineSeries.push(series);
+        });
+    }
+}
+
+function addTrendline(chart, startPoint, endPoint, color, lineWidth) {
+    const lineSeries = chart.addLineSeries({
+        color: color,
+        lineWidth: lineWidth,
+        lastValueVisible: false,
+        priceLineVisible: false,
+    });
+
+    lineSeries.setData([
+        { time: startPoint.time, value: startPoint.value },
+        { time: endPoint.time, value: endPoint.value }
+    ]);
+
+    return lineSeries;
 }
 
 function updateInfoBox(infoBox, symbol, latestData) {

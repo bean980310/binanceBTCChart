@@ -46,7 +46,7 @@
             async function updateTitleWithPrice() {
                 try {
                     const response = await fetch('/data');
-                    const data = await response.json();
+                    const { data } = await response.json();
                     
                     // Get latest and previous candlestick data
                     const latestPrice = data[data.length - 1].Close;
