@@ -174,7 +174,7 @@ async def update_predictions():
         timestamp = datetime.now()
         await save_prediction_to_csv(prediction, timestamp)
         print(f"Prediction updated at {timestamp}")
-        await asyncio.sleep(60)  # 1시간 간격으로 업데이트
+        await asyncio.sleep(60)
 
 async def get_data_and_indicators(client: AsyncClient) -> pd.DataFrame:
     data = await get_historical_klines(client, 'BTCUSDT', AsyncClient.KLINE_INTERVAL_4HOUR, '180 days ago UTC+9:00')
