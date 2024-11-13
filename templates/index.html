@@ -46,11 +46,11 @@
             async function updateTitleWithPrice() {
                 try {
                     const response = await fetch('/data');
-                    const { priceData } = await response.json();
+                    const data = await response.json();
                     
                     // Get latest and previous candlestick data
-                    const latestPrice = priceData[priceData.length - 1].Close;
-                    const previousPrice = priceData.length > 1 ? priceData[priceData.length - 2].Close : null;
+                    const latestPrice = data[data.length - 1].Close;
+                    const previousPrice = data.length > 1 ? data[data.length - 2].Close : null;
 
                     // Calculate the percentage change
                     let changePercent = 0;

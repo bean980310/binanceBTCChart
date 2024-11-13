@@ -2,16 +2,16 @@
 async function initializeChartSystem() {
     try {
         const response = await fetch('/data');
-        const { priceData, indicatorData } = await response.json();
+        const data = await response.json();
 
         const symbol = "BTCUSDT";
-        const infoBox = initializeInfoBox(symbol, priceData);
+        const infoBox = initializeInfoBox(symbol, data);
 
         const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
 
         const series = initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stochRsiChart);
         
-        const chartData = await transformAllData(priceData, indicatorData);
+        const chartData = await transformAllData(data);
         
         await updateAllSeriesData(series, chartData);
 
@@ -72,20 +72,20 @@ function initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stoch
 }
 
 // 모든 데이터 변환을 하나의 함수로 통합
-async function transformAllData(priceData, indicatorData) {
+async function transformAllData(data) {
     return {
-        ohlcData: transformChartData(priceData),
-        volumeData: transformVolumeData(indicatorData),
-        ema9Data: transformIndicatorData(indicatorData, 'EMA9'),
-        ema60Data: transformIndicatorData(indicatorData, 'EMA60'),
-        ema200Data: transformIndicatorData(indicatorData, 'EMA200'),
-        rsiData: transformIndicatorData(indicatorData, 'RSI'),
-        rsiSmaData: transformIndicatorData(indicatorData, 'RSI_SMA'),
-        macdLineData: transformIndicatorData(indicatorData, 'MACD'),
-        macdSignalData: transformIndicatorData(indicatorData, 'MACD_Signal'),
-        macdHistData: transformMacdHistData(indicatorData),
-        stochRsiKData: transformIndicatorData(indicatorData, 'StochRSI_%K'),
-        stochRsiDData: transformIndicatorData(indicatorData, 'StochRSI_%D')
+        ohlcData: transformChartData(data),
+        volumeData: transformVolumeData(data),
+        ema9Data: transformIndicatorData(data, 'EMA9'),
+        ema60Data: transformIndicatorData(data, 'EMA60'),
+        ema200Data: transformIndicatorData(data, 'EMA200'),
+        rsiData: transformIndicatorData(data, 'RSI'),
+        rsiSmaData: transformIndicatorData(data, 'RSI_SMA'),
+        macdLineData: transformIndicatorData(data, 'MACD'),
+        macdSignalData: transformIndicatorData(data, 'MACD_Signal'),
+        macdHistData: transformMacdHistData(data),
+        stochRsiKData: transformIndicatorData(data, 'StochRSI_%K'),
+        stochRsiDData: transformIndicatorData(data, 'StochRSI_%D')
     };
 }
 
@@ -121,7 +121,7 @@ async function updateAllData(series, infoBox, symbol) {
     }
 }
 
-// async function updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart) {
+// async function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
 //     try {
 //         // 기존 라인 제거를 비동기 처리하고 모든 라인 제거가 완료될 때까지 대기
 //         await Promise.all(supportSeriesList.map(series => priceChart.removeSeries(series)));
@@ -137,7 +137,7 @@ async function updateAllData(series, infoBox, symbol) {
 //         // 각 레벨에 대한 지지/저항선을 비동기적으로 추가
 //         await Promise.all(levels.map(level => 
 //             addSupportResistanceLevel(
-//                 supportresistance, level, priceChart, 
+//                 data, level, priceChart, 
 //                 supportSeriesList, resistanceSeriesList,
 //                 supportColors, resistanceColors
 //             )
@@ -298,7 +298,7 @@ function updateInfoBox(infoBox, symbol, latestData) {
     }
 }
 
-function initializeInfoBox(symbol, priceData){
+function initializeInfoBox(symbol, data){
     const infoBox = document.createElement('div');
     infoBox.style.position = 'absolute';
     infoBox.style.top = '10px';
@@ -311,7 +311,7 @@ function initializeInfoBox(symbol, priceData){
     infoBox.style.fontSize = '14px';
     document.body.appendChild(infoBox);
 
-    let lastData = priceData.length > 0 ? priceData[priceData.length - 1] : null;
+    let lastData = data.length > 0 ? data[data.length - 1] : null;
 
     if (lastData) {
         infoBox.innerHTML = `${symbol} - O: ${lastData.Open.toFixed(2)} H: ${lastData.High.toFixed(2)} L: ${lastData.Low.toFixed(2)} C: ${lastData.Close.toFixed(2)}`;

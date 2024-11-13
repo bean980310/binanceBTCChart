@@ -6,8 +6,6 @@ from fastapi.requests import Request
 import aiohttp
 import aiofiles
 from binance import AsyncClient
-from binance.cm_futures import CMFutures
-from binance.um_futures import UMFutures
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
@@ -19,6 +17,8 @@ from sklearn.cluster import DBSCAN
 from typing import List, Tuple, Dict
 import os
 import asyncio
+import ta.momentum
+import ta.trend
 import uvicorn
 from typing import Dict, Any
 from datetime import datetime, timedelta
@@ -29,7 +29,7 @@ from io import StringIO
 
 from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
 from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
-from src.fetch import read_existing_csv, save_dataframe_to_csv, fetch_new_klines, get_last_timestamp
+from src.fetch import read_existing_csv, save_dataframe_to_csv, fetch_new_klines, get_last_timestamp, calculate_indicators
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -72,54 +72,6 @@ async def initialize_client():
     api_key = await get_api(api_key_file, input_api_key)
     api_secret = await get_api(api_secret_file, input_api_secret)
     return await AsyncClient.create(api_key, api_secret)
-
-async def initialize_cm_futures():
-    api_key = await get_api(api_key_file, input_api_key)
-    api_secret = await get_api(api_secret_file, input_api_secret)
-    return CMFutures(key=api_key, secret=api_secret)
-
-async def initialize_um_futures():
-    api_key = await get_api(api_key_file, input_api_key)
-    api_secret = await get_api(api_secret_file, input_api_secret)
-    return UMFutures(key=api_key, secret=api_secret)
-
-# 이동 평균 계산 함수
-def calculate_ema(data: pd.DataFrame, period: int) -> pd.DataFrame:
-    return ta.trend.ema_indicator(data['Close'], window=period)
-
-def calculate_moving_averages(data: pd.DataFrame) -> pd.DataFrame:
-    data['EMA9'] = calculate_ema(data, 9)
-    data['EMA60'] = calculate_ema(data, 60)
-    data['EMA200'] = calculate_ema(data, 200)
-    return data
-
-# RSI 및 관련 계산 함수
-def calculate_rsi(data: pd.DataFrame) -> pd.DataFrame:
-    data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
-    data['RSI_SMA'] = data['RSI'].rolling(window=9).mean()
-    return data
-
-# Stochastic RSI 계산 함수
-def calculate_stochastic_rsi(data: pd.DataFrame) -> pd.DataFrame:
-    stoch_rsi = ta.momentum.StochRSIIndicator(data['Close'], window=14, smooth1=3, smooth2=3)
-    data['StochRSI_%K'] = stoch_rsi.stochrsi_k()
-    data['StochRSI_%D'] = stoch_rsi.stochrsi_d()
-    return data
-
-# MACD 계산 함수
-def calculate_macd(data: pd.DataFrame) -> pd.DataFrame:
-    macd = ta.trend.MACD(data['Close'], window_slow=26, window_fast=12, window_sign=9)
-    data['MACD'] = macd.macd()
-    data['MACD_Signal'] = macd.macd_signal()
-    data['MACD_Hist'] = macd.macd_diff()
-    return data
-
-def calculate_indicators(data: pd.DataFrame) -> pd.DataFrame:
-    data = calculate_moving_averages(data)
-    data = calculate_rsi(data)
-    data = calculate_stochastic_rsi(data)
-    data = calculate_macd(data)
-    return data
 
 def calculate_support_resistance_levels(data: pd.DataFrame) -> None:
     analyzer = SupportResistanceAnalyzer()
@@ -214,7 +166,6 @@ async def load_csv_data():
 async def fetch_and_update_data(client: AsyncClient, symbol, interval, last_timestamp):
     while True:
         try:
-            # 새로운 데이터를 가져와서 DataFrame으로 반환
             new_data = await fetch_new_klines(client, symbol, interval, start_time=last_timestamp)
 
             if new_data is not None and not new_data.empty:
@@ -227,22 +178,61 @@ async def fetch_and_update_data(client: AsyncClient, symbol, interval, last_time
                     # 기존 데이터와 새 데이터를 병합
                     combined_data = pd.concat([existing_data, new_data])
 
-                    # 'Open Time'을 기준으로 중복 제거 (keep last)
+                    # 'Open Time'과 'Close Time'은 이미 시간대가 지정되어 있음
+
+                    # 숫자 열만 float으로 변환
+                    numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    combined_data[numeric_columns] = combined_data[numeric_columns].astype(float)
+
+                    # 'Open Time'을 기준으로 중복 제거 (keep='last'로 최근 데이터 유지)
                     combined_data.drop_duplicates(subset=['Open Time'], keep='last', inplace=True)
+
+                    # 지표 계산
+                    combined_data = calculate_indicators(combined_data)
+
+                    # 불필요한 컬럼 제거
+                    combined_data = combined_data.drop(['Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'], axis=1)
+
+                    # 'Open Time'과 'Close Time'을 문자열로 변환
+                    combined_data['Open Time'] = combined_data['Open Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    combined_data['Close Time'] = combined_data['Close Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+                    # 컬럼 순서 지정
+                    column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
+                    combined_data = combined_data[column_order]
 
                     # 데이터 정렬
                     combined_data = combined_data.sort_values(by='Open Time', ascending=True)
 
                     # CSV 파일에 저장
                     await save_dataframe_to_csv(combined_data, csv_file_path)
-                    combined_data['Open Time'] = pd.to_datetime(combined_data['Open Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
-                    combined_data['Close Time'] = pd.to_datetime(combined_data['Close Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
                 else:
                     # 기존 데이터가 없으면 새 데이터로 CSV 파일 생성
                     combined_data = new_data.copy()
+
+                    # 숫자 열만 float으로 변환
+                    numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    combined_data[numeric_columns] = combined_data[numeric_columns].astype(float)
+
+                    # 지표 계산
+                    combined_data = calculate_indicators(combined_data)
+
+                    # 불필요한 컬럼 제거
+                    combined_data = combined_data.drop(['Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'], axis=1)
+
+                    # 'Open Time'과 'Close Time'을 문자열로 변환
+                    combined_data['Open Time'] = combined_data['Open Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    combined_data['Close Time'] = combined_data['Close Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+                    # 컬럼 순서 지정
+                    column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
+                    combined_data = combined_data[column_order]
+
+                    # 데이터 정렬
+                    combined_data = combined_data.sort_values(by='Open Time', ascending=True)
+
+                    # CSV 파일에 저장
                     await save_dataframe_to_csv(combined_data, csv_file_path)
-                    combined_data['Open Time'] = pd.to_datetime(combined_data['Open Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
-                    combined_data['Close Time'] = pd.to_datetime(combined_data['Close Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
                 print("데이터가 성공적으로 업데이트되었습니다.")
             else:
                 print("새로운 데이터가 없습니다.")
@@ -251,11 +241,7 @@ async def fetch_and_update_data(client: AsyncClient, symbol, interval, last_time
 
 def get_chart_data():
     data = pd.read_csv(csv_file_path, parse_dates=['Open Time'])
-    return pd.DataFrame(data, columns=[
-        'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
-        'Close Time', 'Quote Asset Volume', 'Number of Trades',
-        'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
-    ])
+    return data
 
 def predict_price(data: pd.DataFrame) -> pd.Series:
     data.dropna(inplace=True)
@@ -299,9 +285,7 @@ async def save_prediction_to_csv(prediction: pd.Series, timestamp: datetime) -> 
 
 async def update_predictions():
     while True:
-        # data = await get_data_and_indicators(app.state.client)
-        df = await get_chart_data()
-        data = calculate_indicators(df)
+        data=get_chart_data()
         prediction = predict_price(data)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         await save_prediction_to_csv(prediction, timestamp)
@@ -313,3 +297,31 @@ async def update_predictions():
 #     srlines = calculate_support_resistance_levels(df)
 #     return srlines
 
+@app.on_event("startup")
+async def startup_event():
+    app.state.client = await initialize_client()
+    last_timestamp = await get_last_timestamp(csv_file_path)
+    asyncio.create_task(fetch_and_update_data(app.state.client, 'BTCUSDT', '4h', last_timestamp))
+    asyncio.create_task(update_predictions())
+    
+@app.get("/")
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/data")
+async def get_data():
+    data = get_chart_data()
+    data = json.loads(data.to_json(orient="records"))
+    return data
+
+@app.get("/predict")
+async def get_prediction():
+    data = get_chart_data()
+    prediction = predict_price(data)
+    timestamp=datetime.now()
+    await save_prediction_to_csv(prediction, timestamp)
+    prediction['time'] = timestamp.isoformat()
+    return JSONResponse(prediction.to_dict())
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host="0.0.0.0", port=5001, reload=True)
