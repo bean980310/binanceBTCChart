@@ -2,6 +2,8 @@ pandas
 numpy
 matplotlib
 python-binance
+binance-connector
+binance-futures-connector
 scikit-learn
 ta
 flask[async]

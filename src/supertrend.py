@@ -22,82 +22,47 @@ def fetch_asset_data(symbol, start_date, interval, exchange):
     return df
 
 def supertrend(df, atr_multiplier=3):
-    # Calculate the Upper Band(UB) and the Lower Band(LB)
-    # Formular: Supertrend =(High+Low)/2 + (Multiplier)∗(ATR)
-    current_average_high_low = (df['High']+df['Low'])/2
+    current_average_high_low = (df['High'] + df['Low']) / 2
     df['atr'] = ta.atr(df['High'], df['Low'], df['Close'], period=15)
     df.dropna(inplace=True)
-    df['basicUpperband'] = current_average_high_low + (atr_multiplier * df['atr'])
-    df['basicLowerband'] = current_average_high_low - (atr_multiplier * df['atr'])
-    first_upperBand_value = df['basicUpperband'].iloc[0]
-    first_lowerBand_value = df['basicLowerband'].iloc[0]
-    upperBand = [first_upperBand_value]
-    lowerBand = [first_lowerBand_value]
+    
+    # Calculate basic upper and lower bands
+    upper_band = current_average_high_low + atr_multiplier * df['atr']
+    lower_band = current_average_high_low - atr_multiplier * df['atr']
+    
+    # Shifted close price for comparisons
+    shifted_close = df['Close'].shift(1)
+    
+    # Align indices by dropping rows with NaN after shifting
+    shifted_close, upper_band = shifted_close.align(upper_band, join='inner')
+    shifted_close, lower_band = shifted_close.align(lower_band, join='inner')
 
-    for i in range(1, len(df)):
-        if df['basicUpperband'].iloc[i] < upperBand[i-1] or df['Close'].iloc[i-1] > upperBand[i-1]:
-            upperBand.append(df['basicUpperband'].iloc[i])
-        else:
-            upperBand.append(upperBand[i-1])
-
-        if df['basicLowerband'].iloc[i] > lowerBand[i-1] or df['Close'].iloc[i-1] < lowerBand[i-1]:
-            lowerBand.append(df['basicLowerband'].iloc[i])
-        else:
-            lowerBand.append(lowerBand[i-1])
-
-    df['Upperband'] = upperBand
-    df['Lowerband'] = lowerBand
-    df.drop(['basicUpperband', 'basicLowerband',], axis=1, inplace=True)
+    # Calculate the final upper and lower bands using vectorized conditions
+    df['Upperband'] = np.where((upper_band < shifted_close), upper_band, np.nan)
+    df['Lowerband'] = np.where((lower_band > shifted_close), lower_band, np.nan)
+    
+    df['Upperband'].fillna(method='ffill', inplace=True)
+    df['Lowerband'].fillna(method='ffill', inplace=True)
     return df
 
 def generate_signals(df):
-    # Intiate a signals list
-    signals = [0]
-
-    # Loop through the dataframe
-    for i in range(1 , len(df)):
-        if df['Close'][i] > df['Upperband'][i]:
-            signals.append(1)
-        elif df['Close'][i] < df['Lowerband'][i]:
-            signals.append(-1)
-        else:
-            signals.append(signals[i-1])
-
-    # Add the signals list as a new column in the dataframe
-    df['Signals'] = signals
-    df['Signals'] = df["Signals"].shift(1) #Remove look ahead bias
+    conditions = [
+        df['Close'] > df['Upperband'],
+        df['Close'] < df['Lowerband']
+    ]
+    choices = [1, -1]
+    df['Signals'] = np.select(conditions, choices, default=0)
+    df['Signals'] = df['Signals'].replace(to_replace=0, method='ffill')
+    df['Signals'] = df['Signals'].shift(1)
     return df
 
 def create_positions(df):
-    # We need to shut off (np.nan) data points in the upperband where the signal is not 1
-    df['Upperband'][df['Signals'] == 1] = np.nan
-    # We need to shut off (np.nan) data points in the lowerband where the signal is not -1
-    df['Lowerband'][df['Signals'] == -1] = np.nan
-
-    # Create a positions list
-    buy_positions = [np.nan]
-    sell_positions = [np.nan]
-
-    # Loop through the dataframe
-    for i in range(1, len(df)):
-        # If the current signal is a 1 (Buy) & the it's not equal to the previous signal
-        # Then that is a trend reversal, so we BUY at that current market price
-        # We take note of the upperband value
-        if df['Signals'][i] == 1 and df['Signals'][i] != df['Signals'][i-1]:
-            buy_positions.append(df['Close'][i])
-            sell_positions.append(np.nan)
-        # If the current signal is a -1 (Sell) & the it's not equal to the previous signal
-        # Then that is a trend reversal, so we SELL at that current market price
-        elif df['Signals'][i] == -1 and df['Signals'][i] != df['Signals'][i-1]:
-            sell_positions.append(df['Close'][i])
-            buy_positions.append(np.nan)
-        else:
-            buy_positions.append(np.nan)
-            sell_positions.append(np.nan)
-
-    # Add the positions list as a new column in the dataframe
+    buy_positions = np.where((df['Signals'] == 1) & (df['Signals'].shift(1) != 1), df['Close'], np.nan)
+    sell_positions = np.where((df['Signals'] == -1) & (df['Signals'].shift(1) != -1), df['Close'], np.nan)
     df['buy_positions'] = buy_positions
     df['sell_positions'] = sell_positions
+    df['Upperband'] = np.where(df['Signals'] == 1, np.nan, df['Upperband'])
+    df['Lowerband'] = np.where(df['Signals'] == -1, np.nan, df['Lowerband'])
     return df
 
 def plot_data(df, symbol):

@@ -2,16 +2,16 @@
 async function initializeChartSystem() {
     try {
         const response = await fetch('/data');
-        const { data, trendlines, supertrend } = await response.json();
+        const { priceData, indicatorData, supportresistance, trendlines, supertrend } = await response.json();
 
-        const symbol = "BTCUSDT.P";
-        const infoBox = initializeInfoBox(symbol, data);
+        const symbol = "BTCUSDT";
+        const infoBox = initializeInfoBox(symbol, priceData);
 
         const { priceChart, volumeChart, rsiChart, macdChart, stochRsiChart } = initializeCharts();
 
         const series = initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stochRsiChart);
         
-        const chartData = await transformAllData(data);
+        const chartData = await transformAllData(priceData, indicatorData);
         
         await updateAllSeriesData(series, chartData);
 
@@ -38,10 +38,10 @@ async function initializeChartSystem() {
         //     await updateSupertrendData(supertrendSeries);
         // }, 60000);
 
-        await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+        await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
         
         setInterval(async () => {
-            await updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart);
+            await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
         }, 60000);
 
         setInterval(async () => {
@@ -72,20 +72,20 @@ function initializeAllSeries(priceChart, volumeChart, rsiChart, macdChart, stoch
 }
 
 // 모든 데이터 변환을 하나의 함수로 통합
-async function transformAllData(data) {
+async function transformAllData(priceData, indicatorData) {
     return {
-        ohlcData: transformChartData(data),
-        volumeData: transformVolumeData(data),
-        ema9Data: transformIndicatorData(data, 'EMA9'),
-        ema60Data: transformIndicatorData(data, 'EMA60'),
-        ema200Data: transformIndicatorData(data, 'EMA200'),
-        rsiData: transformIndicatorData(data, 'RSI'),
-        rsiSmaData: transformIndicatorData(data, 'RSI_SMA'),
-        macdLineData: transformIndicatorData(data, 'MACD'),
-        macdSignalData: transformIndicatorData(data, 'MACD_Signal'),
-        macdHistData: transformMacdHistData(data),
-        stochRsiKData: transformIndicatorData(data, 'StochRSI_%K'),
-        stochRsiDData: transformIndicatorData(data, 'StochRSI_%D')
+        ohlcData: transformChartData(priceData),
+        volumeData: transformVolumeData(indicatorData),
+        ema9Data: transformIndicatorData(indicatorData, 'EMA9'),
+        ema60Data: transformIndicatorData(indicatorData, 'EMA60'),
+        ema200Data: transformIndicatorData(indicatorData, 'EMA200'),
+        rsiData: transformIndicatorData(indicatorData, 'RSI'),
+        rsiSmaData: transformIndicatorData(indicatorData, 'RSI_SMA'),
+        macdLineData: transformIndicatorData(indicatorData, 'MACD'),
+        macdSignalData: transformIndicatorData(indicatorData, 'MACD_Signal'),
+        macdHistData: transformMacdHistData(indicatorData),
+        stochRsiKData: transformIndicatorData(indicatorData, 'StochRSI_%K'),
+        stochRsiDData: transformIndicatorData(indicatorData, 'StochRSI_%D')
     };
 }
 
@@ -109,9 +109,9 @@ async function updateAllSeriesData(series, chartData) {
 async function updateAllData(series, infoBox, symbol) {
     try {
         const response = await fetch('/data');
-        const { data } = await response.json();
+        const { priceData, indicatorData } = await response.json();
         
-        const chartData = await transformAllData(data);
+        const chartData = await transformAllData(priceData, indicatorData);
         await updateAllSeriesData(series, chartData);
         
         const latestData = chartData.ohlcData[chartData.ohlcData.length - 1];
@@ -235,44 +235,44 @@ async function updateTrendline(data, trendlineSeries, priceChart){
     }
 }
 
-// 슈퍼트렌드 데이터 업데이트
-async function updateSupertrendData(supertrendSeries) {
-    try {
-        const response = await fetch('/data');
-        const { supertrend } = await response.json();
+// // 슈퍼트렌드 데이터 업데이트
+// async function updateSupertrendData(supertrendSeries) {
+//     try {
+//         const response = await fetch('/data');
+//         const { supertrend } = await response.json();
 
-        const upperbandData = supertrend.map(item => ({
-            time: new Date(item.date).getTime() / 1000,
-            value: item.Upperband,
-        }));
+//         const upperbandData = supertrend.map(item => ({
+//             time: new Date(item.date).getTime() / 1000,
+//             value: item.Upperband,
+//         }));
 
-        const lowerbandData = supertrend.map(item => ({
-            time: new Date(item.date).getTime() / 1000,
-            value: item.Lowerband,
-        }));
+//         const lowerbandData = supertrend.map(item => ({
+//             time: new Date(item.date).getTime() / 1000,
+//             value: item.Lowerband,
+//         }));
 
-        const buySignals = supertrend
-            .filter(item => item.Signals === 1)
-            .map(item => ({
-                time: new Date(item.date).getTime() / 1000,
-                value: item.Close,
-            }));
+//         const buySignals = supertrend
+//             .filter(item => item.Signals === 1)
+//             .map(item => ({
+//                 time: new Date(item.date).getTime() / 1000,
+//                 value: item.Close,
+//             }));
 
-        const sellSignals = supertrend
-            .filter(item => item.signals === -1)
-            .map(item => ({
-                time: new Date(item.date).getTime() / 1000,
-                value: item.Close,
-            }));
+//         const sellSignals = supertrend
+//             .filter(item => item.signals === -1)
+//             .map(item => ({
+//                 time: new Date(item.date).getTime() / 1000,
+//                 value: item.Close,
+//             }));
 
-        supertrendSeries.upperbandSeries.setData(upperbandData);
-        supertrendSeries.lowerbandSeries.setData(lowerbandData);
-        supertrendSeries.buySignalSeries.setData(buySignals);
-        supertrendSeries.sellSignalSeries.setData(sellSignals);
-    } catch (error) {
-        console.error('Supertrend update error:', error);
-    }
-}
+//         supertrendSeries.upperbandSeries.setData(upperbandData);
+//         supertrendSeries.lowerbandSeries.setData(lowerbandData);
+//         supertrendSeries.buySignalSeries.setData(buySignals);
+//         supertrendSeries.sellSignalSeries.setData(sellSignals);
+//     } catch (error) {
+//         console.error('Supertrend update error:', error);
+//     }
+// }
 
 function addTrendline(chart, startPoint, endPoint, color, lineWidth) {
     const lineSeries = chart.addLineSeries({
@@ -298,7 +298,7 @@ function updateInfoBox(infoBox, symbol, latestData) {
     }
 }
 
-function initializeInfoBox(symbol, data){
+function initializeInfoBox(symbol, priceData){
     const infoBox = document.createElement('div');
     infoBox.style.position = 'absolute';
     infoBox.style.top = '10px';
@@ -311,7 +311,7 @@ function initializeInfoBox(symbol, data){
     infoBox.style.fontSize = '14px';
     document.body.appendChild(infoBox);
 
-    let lastData = data.length > 0 ? data[data.length - 1] : null;
+    let lastData = priceData.length > 0 ? priceData[priceData.length - 1] : null;
 
     if (lastData) {
         infoBox.innerHTML = `${symbol} - O: ${lastData.Open.toFixed(2)} H: ${lastData.High.toFixed(2)} L: ${lastData.Low.toFixed(2)} C: ${lastData.Close.toFixed(2)}`;
@@ -321,63 +321,63 @@ function initializeInfoBox(symbol, data){
     return infoBox;
 }
 
-// 슈퍼트렌드 시리즈 초기화
-function initializeSupertrendSeries(priceChart, supertrendData) {
-    const upperbandSeries = priceChart.addLineSeries({
-        color: 'red',
-        lineWidth: 1,
-        title: 'Supertrend Upper Band',
-    });
+// // 슈퍼트렌드 시리즈 초기화
+// function initializeSupertrendSeries(priceChart, supertrendData) {
+//     const upperbandSeries = priceChart.addLineSeries({
+//         color: 'red',
+//         lineWidth: 1,
+//         title: 'Supertrend Upper Band',
+//     });
 
-    const lowerbandSeries = priceChart.addLineSeries({
-        color: 'green',
-        lineWidth: 1,
-        title: 'Supertrend Lower Band',
-    });
+//     const lowerbandSeries = priceChart.addLineSeries({
+//         color: 'green',
+//         lineWidth: 1,
+//         title: 'Supertrend Lower Band',
+//     });
 
-    const buySignalSeries = priceChart.addHistogramSeries({
-        color: '#2cf651',
-        priceFormat: { type: 'price' },
-        scaleMargins: { top: 0.7, bottom: 0 },
-    });
+//     const buySignalSeries = priceChart.addHistogramSeries({
+//         color: '#2cf651',
+//         priceFormat: { type: 'price' },
+//         scaleMargins: { top: 0.7, bottom: 0 },
+//     });
 
-    const sellSignalSeries = priceChart.addHistogramSeries({
-        color: '#f50100',
-        priceFormat: { type: 'price' },
-        scaleMargins: { top: 0.7, bottom: 0 },
-    });
+//     const sellSignalSeries = priceChart.addHistogramSeries({
+//         color: '#f50100',
+//         priceFormat: { type: 'price' },
+//         scaleMargins: { top: 0.7, bottom: 0 },
+//     });
 
-    const upperbandData = supertrendData.map(item => ({
-        time: new Date(item.date).getTime() / 1000,
-        value: item.upperband,
-    }));
+//     const upperbandData = supertrendData.map(item => ({
+//         time: new Date(item.date).getTime() / 1000,
+//         value: item.upperband,
+//     }));
 
-    const lowerbandData = supertrendData.map(item => ({
-        time: new Date(item.date).getTime() / 1000,
-        value: item.lowerband,
-    }));
+//     const lowerbandData = supertrendData.map(item => ({
+//         time: new Date(item.date).getTime() / 1000,
+//         value: item.lowerband,
+//     }));
 
-    const buySignals = supertrendData
-        .filter(item => item.Signals === 1)
-        .map(item => ({
-            time: new Date(item.date).getTime() / 1000,
-            value: item.Close,
-        }));
+//     const buySignals = supertrendData
+//         .filter(item => item.Signals === 1)
+//         .map(item => ({
+//             time: new Date(item.date).getTime() / 1000,
+//             value: item.Close,
+//         }));
 
-    const sellSignals = supertrendData
-        .filter(item => item.Signals === -1)
-        .map(item => ({
-            time: new Date(item.date).getTime() / 1000,
-            value: item.Close,
-        }));
+//     const sellSignals = supertrendData
+//         .filter(item => item.Signals === -1)
+//         .map(item => ({
+//             time: new Date(item.date).getTime() / 1000,
+//             value: item.Close,
+//         }));
 
-    upperbandSeries.setData(upperbandData);
-    lowerbandSeries.setData(lowerbandData);
-    buySignalSeries.setData(buySignals);
-    sellSignalSeries.setData(sellSignals);
+//     upperbandSeries.setData(upperbandData);
+//     lowerbandSeries.setData(lowerbandData);
+//     buySignalSeries.setData(buySignals);
+//     sellSignalSeries.setData(sellSignals);
 
-    return { upperbandSeries, lowerbandSeries, buySignalSeries, sellSignalSeries };
-}
+//     return { upperbandSeries, lowerbandSeries, buySignalSeries, sellSignalSeries };
+// }
 
 function initializeCharts(){
     const chartOptions = {

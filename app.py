@@ -5,7 +5,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 import aiohttp
 import aiofiles
-from binance import AsyncClient
+from binance.client import AsyncClient
+from binance.cm_futures import CMFutures
+from binance.um_futures import UMFutures
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
@@ -25,7 +27,7 @@ import lightweight_charts as lwc
 import requests
 
 from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
-from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
+# from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -64,6 +66,16 @@ async def initialize_client():
     api_key = await get_api(api_key_file, input_api_key)
     api_secret = await get_api(api_secret_file, input_api_secret)
     return await AsyncClient.create(api_key, api_secret)
+
+async def initialize_cm_futures():
+    api_key = await get_api(api_key_file, input_api_key)
+    api_secret = await get_api(api_secret_file, input_api_secret)
+    return CMFutures(key=api_key, secret=api_secret)
+
+async def initialize_um_futures():
+    api_key = await get_api(api_key_file, input_api_key)
+    api_secret = await get_api(api_secret_file, input_api_secret)
+    return UMFutures(key=api_key, secret=api_secret)
 
 # 이동 평균 계산 함수
 def calculate_ema(data: pd.DataFrame, period: int) -> pd.DataFrame:
@@ -161,14 +173,31 @@ def calculate_trendlines(data: pd.DataFrame) -> dict:
         'channels': channel_lines
     }
 
-def get_supertrend(data, multiplier=3, capital=100, leverage=1):
-    supertrend_data=supertrend(data, multiplier)
-    supertrend_signals=generate_signals(supertrend_data)
-    supertrend_positions=create_positions(supertrend_signals)
-    supertrend_df=strategy_performance(supertrend_positions, capital, leverage)
-    return supertrend_df
+# def get_supertrend(data, multiplier=3, capital=100, leverage=1):
+#     supertrend_data=supertrend(data, multiplier)
+#     supertrend_signals=generate_signals(supertrend_data)
+#     supertrend_positions=create_positions(supertrend_signals)
+#     supertrend_df=strategy_performance(supertrend_positions, capital, leverage)
+#     return supertrend_df
 
-async def get_historical_klines(client, symbol: str, interval: str, start_date: str = None, end_date: str = None, limit: int = 1000) -> pd.DataFrame:
+async def get_futures_price(um_futures, symbol: str = "BTCUSDT", interval: str = "4h", limit: int = 1000) -> pd.DataFrame:
+    """비트코인 선물 가격 정보를 가져오는 함수"""
+    # 비트코인 선물 데이터 가져오기
+    klines = um_futures.klines(symbol=symbol, interval=interval, limit=limit)
+    
+    # DataFrame으로 변환
+    data = pd.DataFrame(klines, columns=[
+        'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 
+        'Quote Asset Volume', 'Number of Trades', 
+        'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
+    ])
+    
+    # 타임스탬프를 날짜 형식으로 변환
+    data['Open Time'] = pd.to_datetime(data['Open Time'], unit='ms')
+    data.set_index('Open Time', inplace=True)
+    return data.astype(float)
+
+async def get_historical_klines(client, symbol, interval, start_date: str = None, end_date: str = None, limit: int = 1000) -> pd.DataFrame:
     # 기본값 설정
     if end_date is None:
         end_time = datetime.now()  # 현재 시간을 기본 종료 시간으로 설정
@@ -249,7 +278,9 @@ async def save_prediction_to_csv(prediction: pd.Series, timestamp: datetime) -> 
 
 async def update_predictions():
     while True:
-        data = await get_data_and_indicators(app.state.client)
+        # data = await get_data_and_indicators(app.state.client)
+        um_data = await get_futures_price(app.state.um_futures)
+        data = calculate_indicators(um_data)
         prediction = predict_price(data)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         await save_prediction_to_csv(prediction, timestamp)
@@ -259,12 +290,13 @@ async def update_predictions():
 async def get_data_and_indicators(client: AsyncClient) -> pd.DataFrame:
     data = await get_historical_klines(client, "BTCUSDT", AsyncClient.KLINE_INTERVAL_4HOUR)
     calculate_indicators(data)
-    calculate_support_resistance_levels(data)
+    # calculate_support_resistance_levels(data)
     return data
 
 @app.on_event("startup")
 async def startup_event():
     app.state.client = await initialize_client()
+    app.state.um_futures = await initialize_um_futures()
     asyncio.create_task(update_predictions())
 
 @app.get("/")
@@ -274,23 +306,42 @@ async def index(request: Request):
 @app.get("/data")
 async def get_data():
     data = await get_data_and_indicators(app.state.client)
-    trendlines = calculate_trendlines(data)
-    supertrend_df = get_supertrend(data)
+    um_data = await get_futures_price(app.state.um_futures)
+    indicator_data=calculate_indicators(um_data)
+    srlines=calculate_support_resistance_levels(um_data)
+    trendlines = calculate_trendlines(um_data)
+    # supertrend_df = get_supertrend(um_data)
 
     data['time'] = data.index.astype(int) // 10**9
     data = data.reset_index()
-    supertrend_json = json.loads(supertrend_df.to_json(orient='records', date_format='iso'))
+
+    um_data['time'] = um_data.index.astype(int) // 10**9
+    um_data = um_data.reset_index()
+
+    indicator_data['time'] = indicator_data.index.astype(int) // 10**9
+    indicator_data = indicator_data.reset_index()
+
+    data=json.loads(data.to_json(orient='records', date_format='iso'))
+    price_data=json.loads(um_data.to_json(orient='records', date_format='iso'))
+    indicator_json=json.loads(indicator_data.to_json(orient='records', date_format='iso'))
+    srlines_json=json.loads(json.dumps(srlines))
+    # supertrend_json = json.loads(supertrend_df.to_json(orient='records', date_format='iso'))
 
     response_data={
-        "data": json.loads(data.to_json(orient='records', date_format='iso')),
+        # "data": data,
+        "priceData": price_data,
+        "indicatorData": indicator_json,
+        "supportresistance": srlines_json,
         "trendlines": trendlines,
-        "supertrend": supertrend_json
+        # "supertrend": supertrend_json
     }
     return JSONResponse(response_data)
 
 @app.get("/predict")
 async def get_prediction():
-    data = await get_data_and_indicators(app.state.client)
+    # data = await get_data_and_indicators(app.state.client)
+    um_data = await get_futures_price(app.state.um_futures)
+    data = calculate_indicators(um_data)
     prediction = predict_price(data)
     timestamp=datetime.now()
     await save_prediction_to_csv(prediction, timestamp)
