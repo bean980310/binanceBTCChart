@@ -2,7 +2,7 @@
 async function initializeChartSystem() {
     try {
         const response = await fetch('/data');
-        const { priceData, indicatorData, supportresistance, trendlines, supertrend } = await response.json();
+        const { priceData, indicatorData } = await response.json();
 
         const symbol = "BTCUSDT";
         const infoBox = initializeInfoBox(symbol, priceData);
@@ -17,11 +17,11 @@ async function initializeChartSystem() {
 
         // const supertrendSeries = initializeSupertrendSeries(priceChart, supertrend);
 
-        let supportSeriesList = [];
-        let resistanceSeriesList = [];
+        // let supportSeriesList = [];
+        // let resistanceSeriesList = [];
 
-        let trendlineSeries = [];
-        await updateTrendline(trendlines, trendlineSeries, priceChart)
+        // let trendlineSeries = [];
+        // await updateTrendline(trendlines, trendlineSeries, priceChart)
 
         priceChart.subscribeCrosshairMove(param => 
             updateOhlcInfo(param, infoBox, series.candlestickSeries, chartData.ohlcData, symbol)
@@ -38,15 +38,15 @@ async function initializeChartSystem() {
         //     await updateSupertrendData(supertrendSeries);
         // }, 60000);
 
-        await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
+        // await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
         
-        setInterval(async () => {
-            await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
-        }, 60000);
+        // setInterval(async () => {
+        //     await updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart);
+        // }, 60000);
 
-        setInterval(async () => {
-            await updateTrendline(trendlines, trendlineSeries, priceChart);
-        }, 60000);
+        // setInterval(async () => {
+        //     await updateTrendline(trendlines, trendlineSeries, priceChart);
+        // }, 60000);
 
     } catch (error) {
         console.error('Initialization error:', error);
@@ -121,119 +121,119 @@ async function updateAllData(series, infoBox, symbol) {
     }
 }
 
-async function updateSupportResistanceLines(data, supportSeriesList, resistanceSeriesList, priceChart) {
-    try {
-        // 기존 라인 제거를 비동기 처리하고 모든 라인 제거가 완료될 때까지 대기
-        await Promise.all(supportSeriesList.map(series => priceChart.removeSeries(series)));
-        await Promise.all(resistanceSeriesList.map(series => priceChart.removeSeries(series)));
+// async function updateSupportResistanceLines(supportresistance, supportSeriesList, resistanceSeriesList, priceChart) {
+//     try {
+//         // 기존 라인 제거를 비동기 처리하고 모든 라인 제거가 완료될 때까지 대기
+//         await Promise.all(supportSeriesList.map(series => priceChart.removeSeries(series)));
+//         await Promise.all(resistanceSeriesList.map(series => priceChart.removeSeries(series)));
 
-        supportSeriesList.length = 0;
-        resistanceSeriesList.length = 0;
+//         supportSeriesList.length = 0;
+//         resistanceSeriesList.length = 0;
 
-        const levels = ["Level1", "Level2", "Level3"];
-        const supportColors = ['green', 'lightgreen'];
-        const resistanceColors = ['red', 'pink'];
+//         const levels = ["Level1", "Level2", "Level3"];
+//         const supportColors = ['green', 'lightgreen'];
+//         const resistanceColors = ['red', 'pink'];
 
-        // 각 레벨에 대한 지지/저항선을 비동기적으로 추가
-        await Promise.all(levels.map(level => 
-            addSupportResistanceLevel(
-                data, level, priceChart, 
-                supportSeriesList, resistanceSeriesList,
-                supportColors, resistanceColors
-            )
-        ));
-    } catch (error) {
-        console.error('Support/Resistance update error:', error);
-    }
-}
+//         // 각 레벨에 대한 지지/저항선을 비동기적으로 추가
+//         await Promise.all(levels.map(level => 
+//             addSupportResistanceLevel(
+//                 supportresistance, level, priceChart, 
+//                 supportSeriesList, resistanceSeriesList,
+//                 supportColors, resistanceColors
+//             )
+//         ));
+//     } catch (error) {
+//         console.error('Support/Resistance update error:', error);
+//     }
+// }
 
-async function addSupportResistanceLevel(data, level, priceChart, supportSeriesList, resistanceSeriesList, supportColors, resistanceColors) {
-    const timeData = data.map(item => {
-        const timestamp = new Date(item['Open Time']).getTime() / 1000;
-        return isNaN(timestamp) ? null : { time: timestamp };
-    }).filter(item => item !== null); // 유효하지 않은 타임스탬프는 제외
+// async function addSupportResistanceLevel(data, level, priceChart, supportSeriesList, resistanceSeriesList, supportColors, resistanceColors) {
+//     const timeData = data.map(item => {
+//         const timestamp = new Date(item['Open Time']).getTime() / 1000;
+//         return isNaN(timestamp) ? null : { time: timestamp };
+//     }).filter(item => item !== null); // 유효하지 않은 타임스탬프는 제외
 
-    const support1st = data[0]?.[`Support_1st_${level}`] ?? null;
-    const support2nd = data[0]?.[`Support_2nd_${level}`] ?? null;
-    const resistance1st = data[0]?.[`Resistance_1st_${level}`] ?? null;
-    const resistance2nd = data[0]?.[`Resistance_2nd_${level}`] ?? null;
+//     const support1st = data[0]?.[`Support_1st_${level}`] ?? null;
+//     const support2nd = data[0]?.[`Support_2nd_${level}`] ?? null;
+//     const resistance1st = data[0]?.[`Resistance_1st_${level}`] ?? null;
+//     const resistance2nd = data[0]?.[`Resistance_2nd_${level}`] ?? null;
 
-    const promises = [];
-    if (support1st != null) {
-        promises.push(addLevelLine(support1st, `Support 1차 ${level}`, supportColors[0], timeData, priceChart, supportSeriesList));
-    }
-    if (support2nd != null) {
-        promises.push(addLevelLine(support2nd, `Support 2차 ${level}`, supportColors[1], timeData, priceChart, supportSeriesList));
-    }
-    if (resistance1st != null) {
-        promises.push(addLevelLine(resistance1st, `Resistance 1차 ${level}`, resistanceColors[0], timeData, priceChart, resistanceSeriesList));
-    }
-    if (resistance2nd != null) {
-        promises.push(addLevelLine(resistance2nd, `Resistance 2차 ${level}`, resistanceColors[1], timeData, priceChart, resistanceSeriesList));
-    }
+//     const promises = [];
+//     if (support1st != null) {
+//         promises.push(addLevelLine(support1st, `Support 1차 ${level}`, supportColors[0], timeData, priceChart, supportSeriesList));
+//     }
+//     if (support2nd != null) {
+//         promises.push(addLevelLine(support2nd, `Support 2차 ${level}`, supportColors[1], timeData, priceChart, supportSeriesList));
+//     }
+//     if (resistance1st != null) {
+//         promises.push(addLevelLine(resistance1st, `Resistance 1차 ${level}`, resistanceColors[0], timeData, priceChart, resistanceSeriesList));
+//     }
+//     if (resistance2nd != null) {
+//         promises.push(addLevelLine(resistance2nd, `Resistance 2차 ${level}`, resistanceColors[1], timeData, priceChart, resistanceSeriesList));
+//     }
 
-    await Promise.all(promises);
-}
+//     await Promise.all(promises);
+// }
 
-async function addLevelLine(value, label, color, timeData, priceChart, seriesList) {
-    const series = priceChart.addLineSeries({
-        color: color,
-        lineWidth: 1,
-        title: label
-    });
+// async function addLevelLine(value, label, color, timeData, priceChart, seriesList) {
+//     const series = priceChart.addLineSeries({
+//         color: color,
+//         lineWidth: 1,
+//         title: label
+//     });
 
-    const lineData = timeData.map(time => ({
-        time: time.time,
-        value: value
-    }));
+//     const lineData = timeData.map(time => ({
+//         time: time.time,
+//         value: value
+//     }));
     
-    await series.setData(lineData);
-    seriesList.push(series);
-}
+//     await series.setData(lineData);
+//     seriesList.push(series);
+// }
 
-async function updateTrendline(data, trendlineSeries, priceChart){ 
-    trendlineSeries.forEach(series => priceChart.removeSeries(series));
-    trendlineSeries = [];
+// async function updateTrendline(data, trendlineSeries, priceChart){ 
+//     trendlineSeries.forEach(series => priceChart.removeSeries(series));
+//     trendlineSeries = [];
 
-    // Add resistance lines
-    data.resistance.forEach(line => {
-        const series = addTrendline(
-            priceChart, 
-            line.start,
-            line.end,
-            line.color,
-            line.lineWidth
-        );
-        trendlineSeries.push(series);
-    });
+//     // Add resistance lines
+//     data.resistance.forEach(line => {
+//         const series = addTrendline(
+//             priceChart, 
+//             line.start,
+//             line.end,
+//             line.color,
+//             line.lineWidth
+//         );
+//         trendlineSeries.push(series);
+//     });
     
-    // Add support lines
-    data.support.forEach(line => {
-        const series = addTrendline(
-            priceChart,
-            line.start,
-            line.end,
-            line.color,
-            line.lineWidth
-        );
-        trendlineSeries.push(series);
-    });
+//     // Add support lines
+//     data.support.forEach(line => {
+//         const series = addTrendline(
+//             priceChart,
+//             line.start,
+//             line.end,
+//             line.color,
+//             line.lineWidth
+//         );
+//         trendlineSeries.push(series);
+//     });
 
-    // Add channel lines
-    if (data.channels) {
-        data.channels.forEach(channel => {
-            const series = priceChart.addLineSeries({
-                color: channel.color,
-                lineWidth: channel.lineWidth,
-                lastValueVisible: false,
-                priceLineVisible: false,
-            });
+//     // Add channel lines
+//     if (data.channels) {
+//         data.channels.forEach(channel => {
+//             const series = priceChart.addLineSeries({
+//                 color: channel.color,
+//                 lineWidth: channel.lineWidth,
+//                 lastValueVisible: false,
+//                 priceLineVisible: false,
+//             });
             
-            series.setData(channel.points);
-            trendlineSeries.push(series);
-        });
-    }
-}
+//             series.setData(channel.points);
+//             trendlineSeries.push(series);
+//         });
+//     }
+// }
 
 // // 슈퍼트렌드 데이터 업데이트
 // async function updateSupertrendData(supertrendSeries) {

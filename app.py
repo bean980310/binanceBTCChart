@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 import aiohttp
 import aiofiles
-from binance.client import AsyncClient
+from binance import AsyncClient
 from binance.cm_futures import CMFutures
 from binance.um_futures import UMFutures
 import numpy as np
@@ -25,9 +25,11 @@ from datetime import datetime, timedelta
 import json
 import lightweight_charts as lwc
 import requests
+from io import StringIO
 
 from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
-# from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
+from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
+from src.fetch import read_existing_csv, save_dataframe_to_csv, fetch_new_klines, get_last_timestamp
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -36,7 +38,11 @@ templates = Jinja2Templates(directory="templates")
 api_key_file = Path.home() / '.binance' / 'api_key.txt'
 api_secret_file = Path.home() / '.binance' / 'api_secret.txt'
 predictions_file = Path().parent / 'data' / 'predictions.csv'
+csv_file_path = Path().parent / 'data' / 'btc_futures_data.csv'
 predictions_file.parent.mkdir(parents=True, exist_ok=True)
+
+data_cache = {}
+cache_lock = asyncio.Lock()
 
 # API 키 관련 함수들은 동일하게 유지
 async def get_api(file_path, prompt_func):
@@ -180,61 +186,76 @@ def calculate_trendlines(data: pd.DataFrame) -> dict:
 #     supertrend_df=strategy_performance(supertrend_positions, capital, leverage)
 #     return supertrend_df
 
-async def get_futures_price(um_futures, symbol: str = "BTCUSDT", interval: str = "4h", limit: int = 1000) -> pd.DataFrame:
-    """비트코인 선물 가격 정보를 가져오는 함수"""
-    # 비트코인 선물 데이터 가져오기
-    klines = um_futures.klines(symbol=symbol, interval=interval, limit=limit)
+async def read_csv_async(file_path: Path) -> pd.DataFrame:
+    """비동기적으로 CSV 파일을 읽어 DataFrame으로 반환하는 함수"""
+    if not file_path.exists():
+        return pd.DataFrame()
     
-    # DataFrame으로 변환
-    data = pd.DataFrame(klines, columns=[
-        'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 
-        'Quote Asset Volume', 'Number of Trades', 
-        'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
-    ])
+    async with aiofiles.open(file_path, mode='r') as f:
+        contents = await f.read()
+    df = pd.read_csv(StringIO(contents), dtype={'Open Time': str, 'Close Time': str}, parse_dates=['Open Time'], index_col='Open Time')
     
-    # 타임스탬프를 날짜 형식으로 변환
-    data['Open Time'] = pd.to_datetime(data['Open Time'], unit='ms')
-    data.set_index('Open Time', inplace=True)
-    return data.astype(float)
+    if not df.empty:
+        try:
+            df['Close Time'] = pd.to_datetime(df['Close Time'], format='%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            print(f"CSV 데이터 변환 오류: {e}")
+            return pd.DataFrame()
+    return df
 
-async def get_historical_klines(client, symbol, interval, start_date: str = None, end_date: str = None, limit: int = 1000) -> pd.DataFrame:
-    # 기본값 설정
-    if end_date is None:
-        end_time = datetime.now()  # 현재 시간을 기본 종료 시간으로 설정
-    else:
-        end_time = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+async def load_csv_data():
+    """애플리케이션 시작 시 CSV 데이터를 로드하여 캐시에 저장"""
+    global data_cache
+    async with cache_lock:
+        data = await read_csv_async(csv_file_path)
+        data_cache['btc_futures'] = data
+        print("CSV 데이터 로드 완료. 데이터 행 수:", len(data))
 
-    end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+async def fetch_and_update_data(client: AsyncClient, symbol, interval, last_timestamp):
+    while True:
+        try:
+            # 새로운 데이터를 가져와서 DataFrame으로 반환
+            new_data = await fetch_new_klines(client, symbol, interval, start_time=last_timestamp)
 
-    if start_date is None:
-        start_str = None
-    else:
-        start_time = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
-        start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+            if new_data is not None and not new_data.empty:
+                print(f"새로 가져온 데이터 행 수: {len(new_data)}")
 
-    # 데이터 수집
-    klines = await client.get_historical_klines(symbol, interval, start_str, end_str, limit)
+                # 기존 CSV 데이터 읽기
+                existing_data = await read_existing_csv(csv_file_path)
 
-    # 데이터가 없으면 빈 데이터프레임 반환
-    if not klines:
-        return pd.DataFrame(columns=[
-            'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
-            'Close Time', 'Quote Asset Volume', 'Number of Trades',
-            'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
-        ])
+                if not existing_data.empty:
+                    # 기존 데이터와 새 데이터를 병합
+                    combined_data = pd.concat([existing_data, new_data])
 
-    # 데이터프레임으로 변환
-    data = pd.DataFrame(klines, columns=[
+                    # 'Open Time'을 기준으로 중복 제거 (keep last)
+                    combined_data.drop_duplicates(subset=['Open Time'], keep='last', inplace=True)
+
+                    # 데이터 정렬
+                    combined_data = combined_data.sort_values(by='Open Time', ascending=True)
+
+                    # CSV 파일에 저장
+                    await save_dataframe_to_csv(combined_data, csv_file_path)
+                    combined_data['Open Time'] = pd.to_datetime(combined_data['Open Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
+                    combined_data['Close Time'] = pd.to_datetime(combined_data['Close Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    # 기존 데이터가 없으면 새 데이터로 CSV 파일 생성
+                    combined_data = new_data.copy()
+                    await save_dataframe_to_csv(combined_data, csv_file_path)
+                    combined_data['Open Time'] = pd.to_datetime(combined_data['Open Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
+                    combined_data['Close Time'] = pd.to_datetime(combined_data['Close Time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
+                print("데이터가 성공적으로 업데이트되었습니다.")
+            else:
+                print("새로운 데이터가 없습니다.")
+        except Exception as e:
+            print(f"데이터 페칭 중 예외 발생: {e}")
+
+def get_chart_data():
+    data = pd.read_csv(csv_file_path, parse_dates=['Open Time'])
+    return pd.DataFrame(data, columns=[
         'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume',
         'Close Time', 'Quote Asset Volume', 'Number of Trades',
         'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
     ])
-
-    # 타임스탬프 열을 날짜 형식으로 변환하고 인덱스로 설정
-    data['Open Time'] = pd.to_datetime(data['Open Time'], unit='ms')
-    data.set_index('Open Time', inplace=True)
-
-    return data.astype(float)
 
 def predict_price(data: pd.DataFrame) -> pd.Series:
     data.dropna(inplace=True)
@@ -279,74 +300,16 @@ async def save_prediction_to_csv(prediction: pd.Series, timestamp: datetime) -> 
 async def update_predictions():
     while True:
         # data = await get_data_and_indicators(app.state.client)
-        um_data = await get_futures_price(app.state.um_futures)
-        data = calculate_indicators(um_data)
+        df = await get_chart_data()
+        data = calculate_indicators(df)
         prediction = predict_price(data)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         await save_prediction_to_csv(prediction, timestamp)
         print(f"Prediction updated at {timestamp}")
         await asyncio.sleep(60)
 
-async def get_data_and_indicators(client: AsyncClient) -> pd.DataFrame:
-    data = await get_historical_klines(client, "BTCUSDT", AsyncClient.KLINE_INTERVAL_4HOUR)
-    calculate_indicators(data)
-    # calculate_support_resistance_levels(data)
-    return data
+# async def get_support_resistance(um_futures: UMFutures) -> pd.DataFrame:
+#     df = await get_chart_data()
+#     srlines = calculate_support_resistance_levels(df)
+#     return srlines
 
-@app.on_event("startup")
-async def startup_event():
-    app.state.client = await initialize_client()
-    app.state.um_futures = await initialize_um_futures()
-    asyncio.create_task(update_predictions())
-
-@app.get("/")
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/data")
-async def get_data():
-    data = await get_data_and_indicators(app.state.client)
-    um_data = await get_futures_price(app.state.um_futures)
-    indicator_data=calculate_indicators(um_data)
-    srlines=calculate_support_resistance_levels(um_data)
-    trendlines = calculate_trendlines(um_data)
-    # supertrend_df = get_supertrend(um_data)
-
-    data['time'] = data.index.astype(int) // 10**9
-    data = data.reset_index()
-
-    um_data['time'] = um_data.index.astype(int) // 10**9
-    um_data = um_data.reset_index()
-
-    indicator_data['time'] = indicator_data.index.astype(int) // 10**9
-    indicator_data = indicator_data.reset_index()
-
-    data=json.loads(data.to_json(orient='records', date_format='iso'))
-    price_data=json.loads(um_data.to_json(orient='records', date_format='iso'))
-    indicator_json=json.loads(indicator_data.to_json(orient='records', date_format='iso'))
-    srlines_json=json.loads(json.dumps(srlines))
-    # supertrend_json = json.loads(supertrend_df.to_json(orient='records', date_format='iso'))
-
-    response_data={
-        # "data": data,
-        "priceData": price_data,
-        "indicatorData": indicator_json,
-        "supportresistance": srlines_json,
-        "trendlines": trendlines,
-        # "supertrend": supertrend_json
-    }
-    return JSONResponse(response_data)
-
-@app.get("/predict")
-async def get_prediction():
-    # data = await get_data_and_indicators(app.state.client)
-    um_data = await get_futures_price(app.state.um_futures)
-    data = calculate_indicators(um_data)
-    prediction = predict_price(data)
-    timestamp=datetime.now()
-    await save_prediction_to_csv(prediction, timestamp)
-    prediction['time'] = timestamp.isoformat()
-    return JSONResponse(prediction.to_dict())
-
-if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=5001, reload=True)
