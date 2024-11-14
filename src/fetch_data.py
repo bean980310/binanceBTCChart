@@ -9,6 +9,8 @@ from getpass import getpass
 from io import StringIO
 import pytz
 import ta
+import ta.momentum
+import ta.trend
 
 from src.calculate_support_resistance import calculate_support_resistance_levels, calculate_trendlines
 from src.api import initialize_client
@@ -236,7 +238,7 @@ async def main():
 
                     # 지표 계산
                     combined_data = calculate_indicators(combined_data)
-                    combined_data = calculate_support_resistance_levels(combined_data)
+                    # combined_data = calculate_support_resistance_levels(combined_data)
 
                     # 불필요한 컬럼 제거
                     combined_data = combined_data.drop(['Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'], axis=1)
@@ -246,8 +248,8 @@ async def main():
                     combined_data['Close Time'] = combined_data['Close Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
                     # 컬럼 순서 지정
-                    # column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
-                    # combined_data = combined_data[column_order]
+                    column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
+                    combined_data = combined_data[column_order]
 
                     # 데이터 정렬
                     combined_data = combined_data.sort_values(by='Open Time', ascending=True)

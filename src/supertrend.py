@@ -8,18 +8,19 @@ import mplfinance as mpf
 import matplotlib.pyplot as plt
 warnings.filterwarnings('ignore')
 
+from src.update_data import get_chart_data
 
-def fetch_asset_data(symbol, start_date, interval, exchange):
-    # Convert start_date to milliseconds timestamp
-    start_date_ms = exchange.parse8601(start_date)
-    ohlcv = exchange.fetch_ohlcv(symbol, interval, since=start_date_ms)
-    header = ["date", "Open", "High", "Low", "Close", "Volume"]
-    df = pd.DataFrame(ohlcv, columns=header)
-    df['date'] = pd.to_datetime(df['date'], unit='ms')
-    df.set_index("date", inplace=True)
-    # Drop the last row containing live data
-    df.drop(df.index[-1], inplace=True)
-    return df
+# def fetch_asset_data(symbol, start_date, interval, exchange):
+#     # Convert start_date to milliseconds timestamp
+#     start_date_ms = exchange.parse8601(start_date)
+#     ohlcv = exchange.fetch_ohlcv(symbol, interval, since=start_date_ms)
+#     header = ["date", "Open", "High", "Low", "Close", "Volume"]
+#     df = pd.DataFrame(ohlcv, columns=header)
+#     df['date'] = pd.to_datetime(df['date'], unit='ms')
+#     df.set_index("date", inplace=True)
+#     # Drop the last row containing live data
+#     df.drop(df.index[-1], inplace=True)
+#     return df
 
 def supertrend(df, atr_multiplier=3):
     current_average_high_low = (df['High'] + df['Low']) / 2
@@ -179,14 +180,17 @@ def get_supertrend(data, multiplier=3, capital=100, leverage=1):
 
 if __name__ == '__main__':
     # Initialize data fetch parameters
-    symbol = "BTC/USDT"
-    start_date = "2022-12-1"
+    symbol = "BTCUSDT"
+    start_date = "2019-09-09"
     interval = '4h'
     exchange = ccxt.binance()
 
     # Fetch historical OHLC data for ETH/USDT
-    data = fetch_asset_data(symbol=symbol, start_date=start_date, interval=interval, exchange=exchange)
+    data = get_chart_data()
 
+    data['time']=(pd.to_datetime(data['Open Time'], unit='ms', utc=True).dt.tz_convert('Asia/Seoul'))
+    
+    data.set_index('time', inplace=True)
 
     volatility = 3
 

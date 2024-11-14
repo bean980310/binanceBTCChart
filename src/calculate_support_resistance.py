@@ -1,5 +1,6 @@
-from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
 import pandas as pd
+
+from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
 
 def calculate_support_resistance_levels(data: pd.DataFrame) -> None:
     analyzer = SupportResistanceAnalyzer()
