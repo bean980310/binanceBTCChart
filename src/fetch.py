@@ -10,37 +10,8 @@ from io import StringIO
 import pytz
 import ta
 
-# API 키 파일 경로 설정
-api_key_file = Path.home() / '.binance' / 'api_key.txt'
-api_secret_file = Path.home() / '.binance' / 'api_secret.txt'
-
-# API 키 관련 함수들
-def get_api(file_path, prompt_func):
-    try:
-        with open(file_path, 'r') as f:
-            return f.read().strip()
-    except Exception as e:
-        return prompt_func()
-
-def set_api(file_path, api):
-    if not file_path.parent.exists():
-        file_path.parent.mkdir(parents=True)
-    with open(file_path, 'w') as f:
-        f.write(api)
-
-def input_api_key():
-    api_key = input("Enter your Binance API key: ")
-    set_api(api_key_file, api_key)
-    return api_key
-
-def input_api_secret():
-    api_secret = getpass("Enter your Binance API secret: ")
-    set_api(api_secret_file, api_secret)
-    return api_secret
-
-# Binance API 키 설정
-API_KEY = get_api(api_key_file, input_api_key)
-API_SECRET = get_api(api_secret_file, input_api_secret)
+from src.calculate_support_resistance import calculate_support_resistance_levels, calculate_trendlines
+from src.api import initialize_client
 
 # 데이터 저장 경로 설정
 csv_file_path = Path().parent / 'data' / 'btc_futures_data.csv'
@@ -198,7 +169,7 @@ def calculate_indicators(data: pd.DataFrame) -> pd.DataFrame:
 async def main():
     try:
         # Binance AsyncClient를 async with로 관리하여 자동으로 종료되도록 함
-        client = await AsyncClient.create(API_KEY, API_SECRET)
+        client = await initialize_client()
         try:
             symbol = "BTCUSDT"  # USD-M 선물 심볼
             interval = "4h"     # 4시간 간격
@@ -265,6 +236,7 @@ async def main():
 
                     # 지표 계산
                     combined_data = calculate_indicators(combined_data)
+                    combined_data = calculate_support_resistance_levels(combined_data)
 
                     # 불필요한 컬럼 제거
                     combined_data = combined_data.drop(['Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'], axis=1)
@@ -274,8 +246,8 @@ async def main():
                     combined_data['Close Time'] = combined_data['Close Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
                     # 컬럼 순서 지정
-                    column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
-                    combined_data = combined_data[column_order]
+                    # column_order = ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'EMA9', 'EMA60', 'EMA200', 'RSI', 'RSI_SMA', 'StochRSI_%K', 'StochRSI_%D', 'MACD', 'MACD_Signal', 'MACD_Hist']
+                    # combined_data = combined_data[column_order]
 
                     # 데이터 정렬
                     combined_data = combined_data.sort_values(by='Open Time', ascending=True)

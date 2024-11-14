@@ -31,113 +31,19 @@ from io import StringIO
 from src.srchannels import SupportResistanceAnalyzer, ChannelAnalyzer
 from src.supertrend import supertrend, generate_signals, create_positions, strategy_performance
 from src.fetch import read_existing_csv, fetch_new_klines, get_last_timestamp, calculate_indicators
+from src.calculate_support_resistance import calculate_support_resistance_levels, calculate_trendlines
+from src.api import initialize_client
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-api_key_file = Path.home() / '.binance' / 'api_key.txt'
-api_secret_file = Path.home() / '.binance' / 'api_secret.txt'
 predictions_file = Path().parent / 'data' / 'predictions.csv'
 csv_file_path = Path().parent / 'data' / 'btc_futures_data.csv'
 predictions_file.parent.mkdir(parents=True, exist_ok=True)
 
 data_cache = {}
 cache_lock = asyncio.Lock()
-
-# API 키 관련 함수들은 동일하게 유지
-async def get_api(file_path, prompt_func):
-    try:
-        with open(file_path, 'r') as f:
-            return f.read().strip()
-    except Exception as e:
-        return await prompt_func()
-
-def set_api(file_path, api):
-    if not file_path.parent.exists():
-        file_path.parent.mkdir(parents=True)
-    with open(file_path, 'w') as f:
-        f.write(api)
-
-async def input_api_key():
-    api_key = input("Enter your Binance API key: ")
-    set_api(api_key_file, api_key)
-    return api_key
-
-async def input_api_secret():
-    api_secret = getpass("Enter your Binance API secret: ")
-    set_api(api_secret_file, api_secret)
-    return api_secret
-
-async def initialize_client():
-    api_key = await get_api(api_key_file, input_api_key)
-    api_secret = await get_api(api_secret_file, input_api_secret)
-    return await AsyncClient.create(api_key, api_secret)
-
-def calculate_support_resistance_levels(data: pd.DataFrame) -> None:
-    analyzer = SupportResistanceAnalyzer()
-    channel_analyzer = ChannelAnalyzer()
-
-    levels = analyzer.find_key_levels(data)
-    channels = channel_analyzer.find_channels(data)
-
-    channel_lines = []
-    
-    for i, level in enumerate(levels['resistance_levels'][:3], 1):
-        data[f'Resistance_1st_Level{i}'] = level['price']
-        if i < len(levels['resistance_levels']):
-            data[f'Resistance_2nd_Level{i}'] = levels['resistance_levels'][i+2]['price']
-            
-    for i, level in enumerate(levels['support_levels'][:3], 1):
-        data[f'Support_1st_Level{i}'] = level['price']
-        if i < len(levels['support_levels']):
-            data[f'Support_2nd_Level{i}'] = levels['support_levels'][i+2]['price']
-
-def calculate_trendlines(data: pd.DataFrame) -> dict:
-    analyzer = SupportResistanceAnalyzer()
-    channel_analyzer = ChannelAnalyzer()
-    
-    # 기존 트렌드라인 분석
-    levels = analyzer.find_key_levels(data)
-    
-    # 채널 분석 추가
-    channels = channel_analyzer.find_channels(data)
-    
-    # 채널 라인 생성
-    channel_lines = []
-    for channel in channels:
-        lines = channel_analyzer.get_channel_lines(channel, data)
-        
-        # 저항선 추가
-        channel_lines.append({
-            'type': 'resistance_channel',
-            'points': lines['resistance'],
-            'color': 'rgba(255, 0, 0, 0.3)',
-            'lineWidth': 1,
-            'strength': channel['strength']
-        })
-        
-        # 지지선 추가
-        channel_lines.append({
-            'type': 'support_channel',
-            'points': lines['support'],
-            'color': 'rgba(0, 255, 0, 0.3)',
-            'lineWidth': 1,
-            'strength': channel['strength']
-        })
-    
-    return {
-        'resistance': levels['resistance_lines'],
-        'support': levels['support_lines'],
-        'channels': channel_lines
-    }
-
-# def get_supertrend(data, multiplier=3, capital=100, leverage=1):
-#     supertrend_data=supertrend(data, multiplier)
-#     supertrend_signals=generate_signals(supertrend_data)
-#     supertrend_positions=create_positions(supertrend_signals)
-#     supertrend_df=strategy_performance(supertrend_positions, capital, leverage)
-#     return supertrend_df
 
 async def read_csv_async(file_path: Path) -> pd.DataFrame:
     """비동기적으로 CSV 파일을 읽어 DataFrame으로 반환하는 함수"""
@@ -298,11 +204,6 @@ async def update_predictions():
         print(f"Prediction updated at {timestamp}")
         await asyncio.sleep(60)
 
-# async def get_support_resistance(um_futures: UMFutures) -> pd.DataFrame:
-#     df = await get_chart_data()
-#     srlines = calculate_support_resistance_levels(df)
-#     return srlines
-
 @app.on_event("startup")
 async def startup_event():
     app.state.client = await initialize_client()
@@ -318,10 +219,10 @@ async def index(request: Request):
 @app.get("/data")
 async def get_data():
     data = get_chart_data()
-    data['time'] = data['Open Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-    data = data.set_index('time')
+    data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
     data = json.loads(data.to_json(orient="records"))
-    return JSONResponse(data)
+    chart_data = data[['time', 'Open', 'High', 'Low', 'Close']].to_dict(orient='records')
+    return JSONResponse(data, chart_data)
 
 @app.get("/predict")
 async def get_prediction():

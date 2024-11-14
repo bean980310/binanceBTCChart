@@ -453,11 +453,11 @@ function createHistogramSeries(chart){
 
 function transformChartData(data){
     return data.map(item => ({
-        time: new Date(item['Open Time']).getTime() / 1000,
-        open: item['Open'],
-        high: item['High'],
-        low: item['Low'],
-        close: item['Close'],
+        time: item.time,
+        open: item.Open,
+        high: item.High,
+        low: item.Low,
+        close: item.Close,
     }));
 }
 

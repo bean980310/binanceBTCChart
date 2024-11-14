@@ -170,6 +170,12 @@ def plot_performance_curve(strategy_df):
     plt.legend()
     plt.show()
 
+def get_supertrend(data, multiplier=3, capital=100, leverage=1):
+    supertrend_data=supertrend(data, multiplier)
+    supertrend_signals=generate_signals(supertrend_data)
+    supertrend_positions=create_positions(supertrend_signals)
+    supertrend_df=strategy_performance(supertrend_positions, capital, leverage)
+    return supertrend_df
 
 if __name__ == '__main__':
     # Initialize data fetch parameters

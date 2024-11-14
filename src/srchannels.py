@@ -162,8 +162,8 @@ class SupportResistanceAnalyzer:
                     slope, times, prices, data[price_col].values)
                 
                 # 시작점과 끝점 계산
-                start_time = data.index[int(times[0])].timestamp()
-                end_time = data.index[int(times[-1])].timestamp()
+                start_time = data['Open Time'].iloc[int(times[0])].timestamp()
+                end_time = data['Open Time'].iloc[int(times[-1])].timestamp()
                 start_price = slope * times[0] + intercept
                 end_price = slope * times[-1] + intercept
                 
@@ -367,7 +367,7 @@ class ChannelAnalyzer:
             resistance_y = channel['resistance_coef'][0] * t + channel['resistance_coef'][1]
             support_y = channel['support_coef'][0] * t + channel['support_coef'][1]
             
-            timestamp = data.index[t].timestamp()
+            timestamp = data['Open Time'].iloc[t].timestamp()
             
             resistance_points.append({
                 'time': timestamp,
