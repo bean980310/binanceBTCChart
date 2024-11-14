@@ -86,9 +86,14 @@ async def read_existing_csv(file_path: Path) -> pd.DataFrame:
 
 # DataFrame을 CSV 파일으로 저장 (덮어쓰기)
 async def save_dataframe_to_csv(df: pd.DataFrame, file_path: Path):
-    async with aiofiles.open(file_path, mode='w') as f:
-        await f.write(df.to_csv(index=False))
-    print(f"CSV 파일이 업데이트되었습니다. 총 데이터 행 수: {len(df)}")
+    if not df.empty:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(file_path, mode='w') as f:
+            await f.write(df.to_csv(index=False))
+        print(f"CSV 파일이 업데이트되었습니다. 총 데이터 행 수: {len(df)}")
+    else:
+        print("저장할 데이터가 없습니다.")
+
 
 # 새로운 Kline 데이터를 가져와 DataFrame으로 반환하는 함수
 async def fetch_new_klines(client, symbol: str, interval: str, start_time: int = None) -> pd.DataFrame:
