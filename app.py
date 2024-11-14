@@ -41,6 +41,7 @@ async def index(request: Request):
 async def get_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
+    data.dropna(subset=['Open', 'High', 'Low', 'Close'], inplace=True)
     chart_data = data[['time', 'Open', 'High', 'Low', 'Close']].to_dict(orient='records')
     return JSONResponse(chart_data)
 
@@ -48,6 +49,7 @@ async def get_data():
 async def get_ema_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
+    data.dropna(subset=['EMA9', 'EMA60', 'EMA200'], inplace=True)
     ema_data = data[['time', 'EMA9', 'EMA60', 'EMA200']].to_dict(orient='records')
     return JSONResponse(ema_data)
 
@@ -55,27 +57,31 @@ async def get_ema_data():
 async def get_volume_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
-    volume_data = data[['time', 'Volume']].to_dict(orient='records')
+    data.dropna(subset=['Volume'], inplace=True)
+    volume_data = data[['time', 'Open', 'Close', 'Volume']].to_dict(orient='records')
     return JSONResponse(volume_data)
 
 @app.get("/rsi_data")
 async def get_rsi_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
+    data.dropna(subset=['RSI', 'RSI_SMA'], inplace=True)
     rsi_data = data[['time', 'RSI', 'RSI_SMA']].to_dict(orient='records')
     return JSONResponse(rsi_data)
 
-@app.get("macd_data")
+@app.get("/macd_data")
 async def get_macd_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
+    data.dropna(subset=['MACD', 'MACD_Signal', 'MACD_Hist'], inplace=True)
     macd_data = data[['time', 'MACD', 'MACD_Signal', 'MACD_Hist']].to_dict(orient='records')
     return JSONResponse(macd_data)
 
-@app.get("stoch_rsi")
+@app.get("/stoch_rsi")
 async def get_stoch_rsi_data():
     data = get_chart_data()
     data['time'] = data['Open Time'].apply(lambda x: int(x.timestamp()))
+    data.dropna(subset=['StochRSI_%K', 'StochRSI_%D'], inplace=True)
     stoch_rsi_data = data[['time', 'StochRSI_%K', 'StochRSI_%D']].to_dict(orient='records')
     return JSONResponse(stoch_rsi_data)
 
