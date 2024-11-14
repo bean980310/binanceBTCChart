@@ -164,6 +164,13 @@ async def load_csv_data():
         data_cache['btc_futures'] = data
         print("CSV 데이터 로드 완료. 데이터 행 수:", len(data))
 
+def cleanup_backups(backup_dir: Path, max_backups: int = 5):
+    backups = sorted(backup_dir.glob(f"{csv_file_path.stem}_backup_*{csv_file_path.suffix}"), reverse=True)
+    if len(backups) > max_backups:
+        for backup_file in backups[max_backups:]:
+            backup_file.unlink()
+            print(f"오래된 백업이 삭제되었습니다: {backup_file}")
+
 async def save_dataframe_to_csv(df: pd.DataFrame, file_path: Path):
     if not df.empty:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,6 +183,7 @@ async def save_dataframe_to_csv(df: pd.DataFrame, file_path: Path):
             backup_file = backup_dir / f"{file_path.stem}_backup_{timestamp}{file_path.suffix}"
             shutil.copy(file_path, backup_file)
             print(f"백업이 생성되었습니다: {backup_file}")
+            cleanup_backups(backup_dir, max_backups=5)
         
         # 데이터를 임시 파일에 먼저 저장
         temp_file = file_path.parent / f"{file_path.stem}_temp{file_path.suffix}"
